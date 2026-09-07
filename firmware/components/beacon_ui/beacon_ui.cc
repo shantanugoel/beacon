@@ -109,6 +109,10 @@ Intent Ui::OnInput(Button b, Press p, const Fleet& f) {
             return Intent::kNone;
 
         case Screen::kFleet: {
+            if (b == Button::kUp && p == Press::kHold) {
+                GoTo(Screen::kSystem);
+                return Intent::kRedrawFull;
+            }
             if (b == Button::kOk && p == Press::kHold) {
                 GoTo(Screen::kQuiet);
                 return Intent::kRedrawFull;

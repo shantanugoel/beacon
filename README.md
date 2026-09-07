@@ -64,8 +64,9 @@ firmware drawing code:
 - **System** — radio, hub, battery, panel wear.
 
 **Controls.** Three buttons, so: `UP`/`DOWN` move, `OK` selects, `OK` held goes
-back. From the fleet screen, holding `OK` drops straight into quiet mode.
-Holding `DOWN` for three seconds powers the device down.
+back. From the fleet screen, holding `UP` opens system status and holding `OK`
+drops straight into quiet mode. Holding `DOWN` for three seconds powers the
+device down.
 
 **Attention.** When a session starts waiting on you, the device leaves quiet
 mode, flutters the LED and plays a short two-tone chirp — quiet and quickly

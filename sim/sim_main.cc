@@ -257,7 +257,8 @@ int main(int argc, char** argv) {
         ui.GoTo(beacon::Screen::kFleet);
         shot("04-fleet-calm", ui, f, dev);
 
-        ui.GoTo(beacon::Screen::kSystem);
+        // Exercise the real Fleet shortcut instead of bypassing navigation.
+        ui.OnInput(beacon::Button::kUp, beacon::Press::kHold, f);
         shot("05-system", ui, f, dev);
 
         for (uint8_t i = 0; i < f.count; ++i) f.agents[i].status = beacon::Status::kIdle;
