@@ -102,23 +102,23 @@ browser for a plain-text view of what the device is seeing. The header line
 
 **Other machines on the same LAN** do not get discovered automatically. Each
 one has to run `agentd` and push to this hub — the device only ever talks to
-one URL. On this desk the hub is `http://192.168.1.10:8787` (listening on
-`0.0.0.0`, no firewall).
+one URL. The hub listens on `0.0.0.0:8787` (no firewall needed on a trusted
+LAN). Replace `HUB_HOST` with the machine running `beacon hub`.
 
 On every other machine:
 
 ```bash
 # from a checkout of this repo, with the same Python as `host/`
-python -m beacon agentd --hub http://192.168.1.10:8787
+python -m beacon agentd --hub http://HUB_HOST:8787
 ```
 
-Leave it running. Within a few seconds `http://192.168.1.10:8787/` should
+Leave it running. Within a few seconds `http://HUB_HOST:8787/` should
 show that machine's sessions and `machines=` should increment. `agentd` never
 listens on a port — it long-polls the hub for actions the same way the device
 long-polls it for state. One firewall hole, at the hub.
 
 To make it survive login, copy `host/beacon-agentd.service` to
-`~/.config/systemd/user/`, point `--hub` at this machine, then:
+`~/.config/systemd/user/`, point `--hub` at the hub machine, then:
 
 ```bash
 systemctl --user enable --now beacon-agentd
@@ -152,7 +152,7 @@ Credentials live in NVS, so they survive a reflash. Over the serial console:
 ```
 beacon-set ssid    your-network
 beacon-set pass    your-password
-beacon-set hub     http://192.168.1.10:8787
+beacon-set hub     http://HUB_HOST:8787
 beacon-save
 beacon-reboot
 ```

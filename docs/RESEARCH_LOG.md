@@ -357,7 +357,7 @@ neighbouring memory happens to live.
 | --- | --- |
 | Boot, panel, all five screens | `beacon-preview` draws each and logs its refresh time |
 | Provisioning over USB console | `beacon-set` / `beacon-save`, credentials survive reflash |
-| Wi-Fi association | `192.168.1.20`, same /24 as the hub, ~2.6 s from boot |
+| Wi-Fi association | same /24 as the hub, ~2.6 s from boot |
 | Hub long-poll | revisions arriving; `304` on no change |
 | Refresh behaviour in steady state | one full refresh on first paint, then flash-free partials of 750–765 ms |
 | Attention path | a blocked agent injected at the hub sorted to the top and triggered a redraw of the band within a second |

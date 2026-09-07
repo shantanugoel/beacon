@@ -1,7 +1,7 @@
 # BEACON agentd — report this machine to a hub on the LAN.
 #
-# Copy to ~/.config/systemd/user/beacon-agentd.service, edit the --hub URL
-# to the machine running `beacon hub`, then:
+# Copy to ~/.config/systemd/user/beacon-agentd.service, edit WorkingDirectory,
+# ExecStart, and the --hub URL to the machine running `beacon hub`, then:
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now beacon-agentd
 #
@@ -14,7 +14,7 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/src/beacon/host
-ExecStart=%h/src/beacon/.venv/bin/python -m beacon agentd --hub http://192.168.1.10:8787
+ExecStart=%h/src/beacon/.venv/bin/python -m beacon agentd --hub http://HUB_HOST:8787
 Restart=always
 RestartSec=5
 

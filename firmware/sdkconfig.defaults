@@ -35,7 +35,6 @@ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 # Note: BSS is deliberately NOT placed in PSRAM. The big buffers are
 # heap_caps_malloc'd from PSRAM at runtime instead - see beacon_mem.h.
 
-# First-boot default for this desk: the hub runs on the hub machine. NVS overrides
-# it, so `beacon-set hub <url>` is enough to point the device somewhere else
-# without rebuilding.
+# First-boot default hub. NVS overrides it, so `beacon-set hub <url>` is
+# enough to point the device somewhere else without rebuilding.
 CONFIG_BEACON_HUB_URL="http://192.168.1.10:8787"

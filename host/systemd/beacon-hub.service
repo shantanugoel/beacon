@@ -1,7 +1,7 @@
 # BEACON hub as a user service:
 #   systemctl --user enable --now beacon-hub
 # It talks to the herdr socket in this user's session, so it must run as the
-# user, not as root.
+# user, not as root. Edit WorkingDirectory / ExecStart to match your checkout.
 [Unit]
 Description=BEACON hub (agent mission control for the NOTE4)
 After=network-online.target

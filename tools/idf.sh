@@ -11,7 +11,13 @@
 #
 # It also exposes idf.py only as a shell function, so the script is invoked
 # directly through the venv's python.
-ACTIVATE=$HOME/.espressif/tools/activate_idf_v6.1.sh
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ACTIVATE="${IDF_ACTIVATE:-$HOME/.espressif/tools/activate_idf_v6.1.sh}"
+if [ ! -x "$ACTIVATE" ] && [ ! -f "$ACTIVATE" ]; then
+    echo "ESP-IDF activate script not found: $ACTIVATE" >&2
+    echo "Set IDF_ACTIVATE, or use a standard idf.py install." >&2
+    exit 1
+fi
 while IFS= read -r line; do
     case "$line" in
         SYSTEM_PATH=*) ;;                       # informational only
@@ -20,5 +26,5 @@ while IFS= read -r line; do
     esac
 done < <(bash "$ACTIVATE" -e)
 
-cd ./firmware || exit 1
+cd "$ROOT/firmware" || exit 1
 "$IDF_PYTHON_ENV_PATH/bin/python" "$IDF_PATH/tools/idf.py" "$@" 2>&1

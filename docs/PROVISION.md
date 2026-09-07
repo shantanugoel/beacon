@@ -1,8 +1,8 @@
 # Getting the device onto the network
 
-The hub URL is already baked into the current build
-(`http://192.168.1.10:8787`), so only Wi-Fi is missing. Credentials go into
-NVS, so they survive reflashing.
+The hub URL is baked into the firmware via `CONFIG_BEACON_HUB_URL` (see
+`firmware/sdkconfig.defaults`). Credentials go into NVS, so they survive
+reflashing. Change the hub later with `beacon-set hub`.
 
 Open the console:
 

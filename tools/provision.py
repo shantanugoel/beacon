@@ -8,7 +8,7 @@ password from a prompt rather than argv - keeping it out of shell history and
 out of the process list.
 
     tools/provision.py --ssid MY-NETWORK
-    tools/provision.py --ssid MY-NETWORK --hub http://192.168.1.10:8787
+    tools/provision.py --ssid MY-NETWORK --hub http://HUB_HOST:8787
     tools/provision.py --show          # just print the current configuration
 
 Requires pyserial (the repo venv has it).
