@@ -149,6 +149,15 @@ void Canvas::Pixel(int x, int y, Ink v) {
     Touch(x, y, 1, 1);
 }
 
+void Canvas::Stamp(int x, int y, Ink v) {
+    if (!ClipTest(x, y)) return;
+    if (!InkAt(x, y, v)) return;
+    uint8_t& byte = pixels_[static_cast<size_t>(y) * kStride + (x >> 3)];
+    const uint8_t mask = static_cast<uint8_t>(0x80u >> (x & 7));
+    byte &= static_cast<uint8_t>(~mask);
+    Touch(x, y, 1, 1);
+}
+
 void Canvas::FillRect(const Rect& r, Ink v) {
     const int x0 = std::max(r.x, clip_.x);
     const int y0 = std::max(r.y, clip_.y);

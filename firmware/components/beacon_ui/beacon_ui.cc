@@ -169,7 +169,7 @@ Paint Ui::Render(Canvas& c, const Fleet& f, const Device& d) {
         case Screen::kAgent: DrawAgent(c, f, d); break;
         case Screen::kSystem: DrawSystem(c, f, d); break;
         case Screen::kSplash: DrawSplash(c, f, d); break;
-        case Screen::kQuiet: return Paint::kFull4bpp;
+        case Screen::kQuiet: DrawQuiet(c, f, d); break;
     }
     const bool full = force_full_;
     force_full_ = false;

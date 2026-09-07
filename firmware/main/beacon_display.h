@@ -26,7 +26,8 @@ public:
     esp_err_t Present(Canvas& canvas, bool force_full);
 
     /* 16-grey full frame. Invalidates the partial-refresh base, so the next
-     * Present() after this is forced to a full 1bpp refresh. */
+     * Present() after this is forced to a full 1bpp refresh. Skips the panel
+     * entirely when the packed frame has not changed. */
     esp_err_t PresentGray(const uint8_t* packed);
 
     esp_err_t Clear();
@@ -39,9 +40,11 @@ private:
     bool DiffRect(const Canvas& canvas, Rect* out) const;
 
     zectrix_epd_handle_t epd_ = nullptr;
-    uint8_t* previous_ = nullptr;   /* last frame actually on the panel */
+    uint8_t* previous_ = nullptr;   /* last 1bpp frame actually on the panel */
+    uint8_t* previous_gray_ = nullptr; /* last 4bpp packed frame, if any   */
     uint8_t* patch_ = nullptr;      /* scratch for the partial window   */
     bool have_base_ = false;
+    bool have_gray_ = false;
     uint32_t full_count_ = 0;
     uint32_t partial_count_ = 0;
     uint32_t since_full_ = 0;

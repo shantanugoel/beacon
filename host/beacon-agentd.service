@@ -1,0 +1,22 @@
+# BEACON agentd — report this machine to a hub on the LAN.
+#
+# Copy to ~/.config/systemd/user/beacon-agentd.service, edit the --hub URL
+# to the machine running `beacon hub`, then:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now beacon-agentd
+#
+# It talks to the herdr socket in this user's session, so it must run as the
+# user, not as root. No inbound port is opened.
+[Unit]
+Description=BEACON agentd (report this machine to the hub)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/src/beacon/host
+ExecStart=%h/src/beacon/.venv/bin/python -m beacon agentd --hub http://192.168.1.10:8787
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -35,6 +35,10 @@ STALE_AFTER = 20 * 60         # a record nobody has mentioned in this long
 # Statuses whose pane content is worth re-reading.
 LIVE = {"working", "blocked", "done"}
 
+# Matches kMaxActions in the firmware's beacon_model.h - the device's array
+# size, so anything past this is dropped on the wire anyway.
+kMaxDeviceActions = 4
+
 
 def machine_name() -> str:
     return socket.gethostname().split(".")[0]
@@ -166,7 +170,7 @@ class Collector:
     async def _maybe_read_pane(self, record: AgentRecord) -> None:
         if record.status not in LIVE or not record.pane_id:
             record.question = ""
-            record.actions = []
+            record.offered = []
             return
         now = time.time()
         if now - self._pane_read_at.get(record.pane_id, 0.0) < PANE_READ_INTERVAL:
@@ -186,22 +190,27 @@ class Collector:
         # on rather than merely unlikely.
         if record.status == "blocked" and reading.options:
             record.question = reading.question
-            record.actions = list(reading.options)
+            record.offered = list(reading.options)
         else:
             record.question = ""
-            record.actions = []
+            record.offered = []
 
     def _compose_actions(self, record: AgentRecord) -> None:
-        """Append the actions that are always available, after any the agent
-        itself offered. Capped at four - the device shows a short list, and a
-        long one turns a glance into a menu."""
+        """Rebuild the action list: what the agent offered, then what is always
+        available. Capped at four - the device shows a short list, and a long
+        one turns a glance into a menu.
+
+        Rebuilt from `offered` rather than appended to `actions`, because this
+        runs on every pane event while the pane itself is only re-read every
+        few seconds; appending made "Focus this pane" pile up three deep.
+        """
         extra: list[ActionSpec] = []
         if record.status == "working":
             extra.append(ActionSpec(id="interrupt", label="Interrupt"))
         if record.status in ("idle", "done"):
             extra.append(ActionSpec(id="continue", label="Continue"))
         extra.append(ActionSpec(id="focus", label="Focus this pane"))
-        record.actions = (record.actions + extra)[:4]
+        record.actions = (list(record.offered) + extra)[:kMaxDeviceActions]
 
     async def _refresh_current_pane(self) -> None:
         try:
@@ -311,6 +320,7 @@ class Collector:
                 record.lines_added = info.lines_added
                 record.lines_removed = info.lines_removed
                 record.actionable = False
+                record.offered = []
                 record.actions = []
                 if record.digest() != before:
                     self._touch()

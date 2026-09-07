@@ -9,7 +9,7 @@ namespace beacon {
 enum class Screen : uint8_t {
     kFleet,    /* the ambient home: attention band + fleet spine */
     kAgent,    /* one session in full, plus its actions          */
-    kQuiet,    /* 16-grey constellation, for a desk at rest      */
+    kQuiet,    /* 1bpp night sky, for a desk at rest             */
     kSystem,   /* radio, hub, battery, panel wear                */
     kSplash,   /* boot / link states                             */
 };
@@ -44,7 +44,8 @@ public:
      * use; for kPartial1bpp, canvas.dirty() is the region to push. */
     Paint Render(Canvas& canvas, const Fleet& fleet, const Device& dev);
 
-    /* 16-grey ambient frame. Only valid when screen() == kQuiet. */
+    /* 16-grey twin of the quiet screen. Product quiet is 1bpp;
+     * this exists so beacon-preview can still exercise the grey waveform. */
     void RenderQuiet4bpp(uint8_t* gray, const Fleet& fleet, const Device& dev);
 
     const char* pending_agent_id() const { return pending_agent_id_; }
@@ -67,6 +68,7 @@ private:
     void DrawAgent(Canvas& c, const Fleet& f, const Device& d);
     void DrawSystem(Canvas& c, const Fleet& f, const Device& d);
     void DrawSplash(Canvas& c, const Fleet& f, const Device& d);
+    void DrawQuiet(Canvas& c, const Fleet& f, const Device& d);
 
     Screen screen_ = Screen::kSplash;
     char selected_id_[28] = {};

@@ -92,6 +92,7 @@ esp_err_t Display::Present(Canvas& canvas, bool force_full) {
         err = zectrix_epd_refresh_full_1bpp(epd_, canvas.data(), kFrameBytes);
         if (err == ESP_OK) {
             have_base_ = true;
+            have_gray_ = false;
             since_full_ = 0;
             ++full_count_;
         }
@@ -126,24 +127,41 @@ esp_err_t Display::Present(Canvas& canvas, bool force_full) {
 
 esp_err_t Display::PresentGray(const uint8_t* packed) {
     if (epd_ == nullptr) return ESP_ERR_INVALID_STATE;
-    const int64_t started = esp_timer_get_time();
+    if (packed == nullptr) return ESP_ERR_INVALID_ARG;
 
-    /* The vendor driver asks for a white full 1bpp frame before 4bpp to keep
-     * the previous image from bleeding through the grey waveform. */
-    static uint8_t* white = nullptr;
-    if (white == nullptr) {
-        white = static_cast<uint8_t*>(
-            heap_caps_malloc(kFrameBytes, MALLOC_CAP_SPIRAM));
-        if (white == nullptr) return ESP_ERR_NO_MEM;
-        memset(white, 0xFF, kFrameBytes);
+    if (previous_gray_ == nullptr) {
+        previous_gray_ = static_cast<uint8_t*>(
+            heap_caps_malloc(ZECTRIX_EPD_4BPP_FRAME_BYTES, MALLOC_CAP_SPIRAM));
+        if (previous_gray_ == nullptr) {
+            previous_gray_ = static_cast<uint8_t*>(
+                malloc(ZECTRIX_EPD_4BPP_FRAME_BYTES));
+        }
+        if (previous_gray_ == nullptr) return ESP_ERR_NO_MEM;
     }
-    esp_err_t err = zectrix_epd_refresh_full_1bpp(epd_, white, kFrameBytes);
-    if (err != ESP_OK) return err;
-    err = zectrix_epd_refresh_full_4bpp(epd_, packed, ZECTRIX_EPD_4BPP_FRAME_BYTES);
-    ++full_count_;
-    // 4bpp leaves no usable base for partial updates.
-    have_base_ = false;
-    since_full_ = kPartialsPerFull;
+    if (have_gray_ &&
+        memcmp(previous_gray_, packed, ZECTRIX_EPD_4BPP_FRAME_BYTES) == 0) {
+        ESP_LOGI(kTag, "4bpp unchanged, skip");
+        return ESP_OK;
+    }
+
+    const int64_t started = esp_timer_get_time();
+    /* The vendor 4bpp path already paints a white base internally
+     * (DisplayOtpWhiteBase). A second full 1bpp white here doubled the flash
+     * the user sees and added ~1 s for no extra cleanliness. */
+    esp_err_t err = zectrix_epd_refresh_full_4bpp(
+        epd_, packed, ZECTRIX_EPD_4BPP_FRAME_BYTES);
+    if (err == ESP_OK) {
+        memcpy(previous_gray_, packed, ZECTRIX_EPD_4BPP_FRAME_BYTES);
+        have_gray_ = true;
+        ++full_count_;
+        // 4bpp leaves no usable base for partial updates.
+        have_base_ = false;
+        since_full_ = kPartialsPerFull;
+    } else {
+        ESP_LOGW(kTag, "4bpp refresh failed: %s", esp_err_to_name(err));
+        have_gray_ = false;
+        have_base_ = false;
+    }
     last_refresh_us_ = esp_timer_get_time() - started;
     ESP_LOGI(kTag, "4bpp frame in %lld ms", last_refresh_us_ / 1000);
     return err;

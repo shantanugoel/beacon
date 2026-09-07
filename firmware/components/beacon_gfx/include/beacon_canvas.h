@@ -53,6 +53,10 @@ public:
     void ResetClip();
 
     void Pixel(int x, int y, Ink v);
+    /* Like Pixel, but never clears ink: overlapping glows and dust can only
+     * darken the paper, they cannot punch holes in a star that is already
+     * there. */
+    void Stamp(int x, int y, Ink v);
     void FillRect(const Rect& r, Ink v);
     void StrokeRect(const Rect& r, Ink v, int thickness = 1);
     void RoundRect(const Rect& r, int radius, Ink v, bool filled);

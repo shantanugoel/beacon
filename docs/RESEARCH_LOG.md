@@ -34,7 +34,7 @@ Three refresh modes exposed by the vendor driver:
 The last row is the important constraint: **4bpp and partial refresh are
 mutually exclusive.** After a greyscale frame you must lay down a fresh full
 1bpp base before any partial update. That single fact shaped the whole UI —
-see §4.
+see §4 and §13.
 
 **Peripherals** (from `zectrix_board_config.h`): 3 buttons (OK/GPIO0,
 UP/GPIO39, DOWN/GPIO18 — DOWN is also the power button with a 3 s shutdown
@@ -401,3 +401,29 @@ flash; the 41% one stayed under it and did not.
 - **NFC is unused.** The board has an ST25-class tag at 0x55; writing the hub
   URL and credentials to it would make provisioning a phone tap instead of a
   serial console.
+
+---
+
+## 13. Quiet mode cannot be 16-grey
+
+The original ambient screen spent the 4bpp waveform because that is the only
+place soft light exists on this panel. The cost was supposed to be rare: enter
+quiet after a few idle minutes, leave it with a 1bpp flash when something
+needs you. In the main loop a 5 s idle tick always set `repaint = true`, and
+`PresentGray` always painted a white full 1bpp frame *and then* the vendor
+4bpp path (which paints another white base internally). The desk object went
+blank every few seconds for eight seconds at a time. That is not ambient, and
+it is not a power win.
+
+A clock on 4bpp cannot be cheap. The beam angle only moves a brad every ~5.6
+minutes, but the digits change every minute, and a 4bpp minute is a full-panel
+flash. So quiet is now 1bpp: the same night-sky composition, ordered-dither
+glows instead of 16 real greys, and `Present()` diffs the frame. Entering quiet
+is one full 1bpp refresh; a minute tick is a small partial of the digits; an
+unchanged quiet frame is not sent to the panel at all. 16-grey remains as a
+`beacon-preview` acceptance path so the waveform cannot rot.
+
+Small type was also recut. The 10–12 px faces were baked at a high 1bpp
+threshold on a light weight, which dropped the joins in a/e/s on this 119 ppi
+panel. They are now slightly heavier, with a lower cut, which reads as ink
+rather than as noise.

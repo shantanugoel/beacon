@@ -36,20 +36,24 @@ class Face:
 
 FACES = [
     # -- Inter: the content voice ------------------------------------------
-    Face("ui10",   "Inter[opsz,wght].ttf", 10, [14, 500], threshold=140),
-    Face("ui12",   "Inter[opsz,wght].ttf", 12, [14, 400], threshold=132),
-    Face("ui12b",  "Inter[opsz,wght].ttf", 12, [14, 700], threshold=140),
-    Face("ui14",   "Inter[opsz,wght].ttf", 14, [14, 400], threshold=130),
-    Face("ui14b",  "Inter[opsz,wght].ttf", 14, [14, 700], threshold=138),
-    Face("ui18b",  "Inter[opsz,wght].ttf", 18, [18, 700], threshold=128),
+    # Small sizes are baked slightly heavier and at a lower 1bpp cut than the
+    # TrueType outline suggests. On this 119 ppi panel a light cut loses the
+    # joins in a, e, s and makes 10 px metadata read as noise; a heavier cut
+    # costs a little elegance and buys the stroke the front layer eats.
+    Face("ui10",   "Inter[opsz,wght].ttf", 10, [14, 620], threshold=112, tracking=1),
+    Face("ui12",   "Inter[opsz,wght].ttf", 12, [14, 520], threshold=118),
+    Face("ui12b",  "Inter[opsz,wght].ttf", 12, [14, 740], threshold=118),
+    Face("ui14",   "Inter[opsz,wght].ttf", 14, [14, 450], threshold=120),
+    Face("ui14b",  "Inter[opsz,wght].ttf", 14, [14, 740], threshold=122),
+    Face("ui18b",  "Inter[opsz,wght].ttf", 18, [18, 720], threshold=124),
     Face("ui26b",  "Inter[opsz,wght].ttf", 26, [28, 800], threshold=126),
     Face("ui40b",  "Inter[opsz,wght].ttf", 40, [32, 800], threshold=124),
     # -- IBM Plex Mono: the instrument voice -------------------------------
-    # 9 px Plex loses the vertex of M entirely; 10 px is the floor where the
-    # caps still hold their shape on this panel.
-    Face("label",  "IBMPlexMono-SemiBold.ttf", 10, threshold=150, tracking=1),
-    Face("mono11", "IBMPlexMono-Regular.ttf",  11, threshold=136),
-    Face("mono11b","IBMPlexMono-SemiBold.ttf", 11, threshold=136),
+    # 9 px Plex loses the vertex of M entirely; 11 px is where the caps still
+    # hold their shape through the panel's front layer at a glance.
+    Face("label",  "IBMPlexMono-SemiBold.ttf", 11, threshold=122, tracking=1),
+    Face("mono11", "IBMPlexMono-Regular.ttf",  12, threshold=118),
+    Face("mono11b","IBMPlexMono-SemiBold.ttf", 12, threshold=118),
 ]
 
 

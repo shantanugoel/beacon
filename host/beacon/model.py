@@ -57,6 +57,10 @@ class AgentRecord:
     actionable: bool = False
     actions: list[ActionSpec] = dataclasses.field(default_factory=list)
     # Local bookkeeping, never sent to the device.
+    # `offered` holds only the options parsed from the agent's own prompt.
+    # `actions` is rebuilt from it each pass; keeping the two apart is what
+    # stops the always-available actions accumulating on every update.
+    offered: list[ActionSpec] = dataclasses.field(default_factory=list)
     seen: float = dataclasses.field(default_factory=time.time)
     pane_id: str = ""
     first_seen: bool = False

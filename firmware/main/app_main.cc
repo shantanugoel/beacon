@@ -281,7 +281,7 @@ void RunPreview() {
         {"session detail", beacon::Screen::kAgent, true},
         {"fleet (calm)", beacon::Screen::kFleet, false},
         {"system", beacon::Screen::kSystem, false},
-        {"quiet / 16-grey", beacon::Screen::kQuiet, false},
+        {"quiet", beacon::Screen::kQuiet, false},
     };
 
     for (const Step& step : kSteps) {
@@ -291,6 +291,33 @@ void RunPreview() {
         g_ui.GoTo(step.screen);
         Paint(true);
         ESP_LOGI(kTag, "preview: %-18s %lld ms", step.name,
+                 g_display.last_refresh_us() / 1000);
+        vTaskDelay(pdMS_TO_TICKS(2500));
+    }
+
+    /* Quiet is 1bpp so a clock tick can be a small partial. Measure that,
+     * then once exercise the 16-grey waveform so it cannot rot silently. */
+    FillPreviewFleet(&g_fleet, false);
+    g_ui.OnFleetUpdated(g_fleet);
+    g_ui.TakeAttentionEdge();
+    g_ui.GoTo(beacon::Screen::kQuiet);
+    Paint(true);
+    ESP_LOGI(kTag, "preview: quiet (enter)     %lld ms",
+             g_display.last_refresh_us() / 1000);
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    g_fleet.minute = static_cast<uint8_t>((g_fleet.minute + 1) % 60);
+    Paint(false);
+    ESP_LOGI(kTag, "preview: quiet (minute)    %lld ms",
+             g_display.last_refresh_us() / 1000);
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    if (g_gray == nullptr) {
+        g_gray = static_cast<uint8_t*>(
+            beacon::BigAlloc(beacon::kScreenW * beacon::kScreenH / 2));
+    }
+    if (g_gray != nullptr) {
+        g_ui.RenderQuiet4bpp(g_gray, g_fleet, g_device);
+        g_display.PresentGray(g_gray);
+        ESP_LOGI(kTag, "preview: quiet 16-grey     %lld ms",
                  g_display.last_refresh_us() / 1000);
         vTaskDelay(pdMS_TO_TICKS(2500));
     }
@@ -491,10 +518,16 @@ extern "C" void app_main(void) {
             repaint = true;
         }
 
-        // The clock and the elapsed timers move on their own; a periodic
-        // repaint keeps them honest without a dedicated timer task. The diff
-        // in Display::Present means an unchanged frame still costs nothing.
-        if (!repaint && !had_input) repaint = true;
+        /* Interactive screens: a periodic paint is cheap because Present()
+         * diffs the 1bpp frame and no-ops when nothing moved. Quiet is the
+         * same now (1bpp constellation), but there is still no reason to
+         * wake the panel on a 5 s tick — the hub already pushes a revision
+         * when the minute changes, which is the only quiet pixel that
+         * moves. Skipping the tick is what stops an idle desk from flashing. */
+        if (!repaint && !had_input &&
+            g_ui.screen() != beacon::Screen::kQuiet) {
+            repaint = true;
+        }
 
         if (g_preview_request) {
             g_preview_request = false;

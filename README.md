@@ -41,15 +41,16 @@ fleet when the hub goes away.
 | | |
 |---|---|
 | ![Session](docs/img/02-agent-blocked.png) | ![Quiet](docs/img/06-quiet-busy.png) |
-| **Session** — what it is asking, and the options it is actually offering | **Quiet** — 16-grey ambient screen for a desk at rest |
+| **Session** — what it is asking, and the options it is actually offering | **Quiet** — night sky: time on the left, one star per session |
 
 - **Fleet** — the home screen. A "needs you" band at the top when something is
   waiting, then every session on a spine: status, title, machine, what it is
   doing, how long it has been in that state.
 - **Session** — one agent in full, and the buttons to answer it.
 - **Quiet** — after a few minutes of no input and nothing waiting, the panel
-  becomes a constellation: one star per session, brightness by state, all
-  orbiting the hub, with a beam whose bearing is the time of day.
+  becomes a night sky: time as a poster on the left, one star per session on
+  the right. Drawn in 1bpp so a minute tick is a small partial refresh, not a
+  full-panel flash.
 - **System** — radio, hub, battery, panel wear.
 
 **Controls.** Three buttons, so: `UP`/`DOWN` move, `OK` selects, `OK` held goes
@@ -96,16 +97,35 @@ python -m beacon hub --port 8787          # from ./host, no dependencies
 ```
 
 This also collects from the local machine. Open `http://<host>:8787/` in a
-browser for a plain-text view of what the device is seeing.
+browser for a plain-text view of what the device is seeing. The header line
+`machines=N` is how you tell whether anyone else has checked in.
 
-For other machines:
+**Other machines on the same LAN** do not get discovered automatically. Each
+one has to run `agentd` and push to this hub — the device only ever talks to
+one URL. On this desk the hub is `http://192.168.1.10:8787` (listening on
+`0.0.0.0`, no firewall).
+
+On every other machine:
 
 ```bash
-python -m beacon agentd --hub http://<hub-host>:8787
+# from a checkout of this repo, with the same Python as `host/`
+python -m beacon agentd --hub http://192.168.1.10:8787
 ```
 
-`agentd` never listens on a port — it long-polls the hub for actions the same
-way the device long-polls it for state. One firewall hole, at the hub.
+Leave it running. Within a few seconds `http://192.168.1.10:8787/` should
+show that machine's sessions and `machines=` should increment. `agentd` never
+listens on a port — it long-polls the hub for actions the same way the device
+long-polls it for state. One firewall hole, at the hub.
+
+To make it survive login, copy `host/beacon-agentd.service` to
+`~/.config/systemd/user/`, point `--hub` at this machine, then:
+
+```bash
+systemctl --user enable --now beacon-agentd
+```
+
+If the other machine has [herdr](https://github.com/) it can answer prompts
+from the device; without herdr it still appears, but read-only.
 
 To see what the collector makes of the local machine without running anything
 else:
@@ -189,10 +209,10 @@ docs/RESEARCH_LOG.md       what was found, what was decided, what it cost
 400 x 300 at ~119 ppi, and three refresh modes with awkward constraints: 16-grey
 destroys the base image that partial refresh needs, and partial refresh takes
 758 ms whether it covers 3% of the panel or 90%. The design follows from that —
-greyscale is spent only on the ambient screen, tone in the interactive screens
-comes from an ordered-dither ink scale, and elapsed times are shown at the
-resolution the panel can actually keep up with. `docs/RESEARCH_LOG.md` §8 has
-the measurements.
+interactive screens and the ambient night sky are all 1bpp so a clock tick is a
+small partial, tone comes from an ordered-dither ink scale, and elapsed times
+are shown at the resolution the panel can actually keep up with.
+`docs/RESEARCH_LOG.md` §8 and §13 have the measurements.
 
 ## Licence
 
