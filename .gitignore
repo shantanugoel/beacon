@@ -1,0 +1,10 @@
+.venv/
+sim/out/*.png
+sim/out/beacon-sim
+sim/out/fonts/
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+__pycache__/
+*.pyc
