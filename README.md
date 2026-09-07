@@ -42,6 +42,16 @@ fleet when the hub goes away.
 |---|---|
 | ![Session](docs/img/02-agent-blocked.png) | ![Quiet](docs/img/06-quiet-busy.png) |
 | **Session** — what it is asking, and the options it is actually offering | **Quiet** — night sky: time on the left, one star per session |
+| ![Calm fleet](docs/img/04-fleet-calm.png) | ![System](docs/img/05-system.png) |
+| **Fleet** — a scan-friendly status rail for every active session | **System** — connection, device, battery, and panel health |
+
+The same host renderer captures interaction and transitional states from the
+firmware drawing code:
+
+| | | |
+|---|---|---|
+| ![Action selection](docs/img/03-agent-actions.png) | ![Startup](docs/img/08-splash.png) | ![Empty fleet](docs/img/09-fleet-empty.png) |
+| **Action selection** | **Startup** | **No sessions** |
 
 - **Fleet** — the home screen. A "needs you" band at the top when something is
   waiting, then every session on a spine: status, title, machine, what it is

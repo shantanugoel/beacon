@@ -38,20 +38,20 @@ FACES = [
     # -- Inter: the content voice ------------------------------------------
     # Small sizes are baked slightly heavier and at a lower 1bpp cut than the
     # TrueType outline suggests. On this 119 ppi panel a light cut loses the
-    # joins in a, e, s and makes 10 px metadata read as noise; a heavier cut
+    # joins in a, e, s and makes tiny metadata read as noise; a heavier cut
     # costs a little elegance and buys the stroke the front layer eats.
-    Face("ui10",   "Inter[opsz,wght].ttf", 10, [14, 620], threshold=112, tracking=1),
+    Face("ui10",   "Inter[opsz,wght].ttf", 11, [14, 560], threshold=116),
     Face("ui12",   "Inter[opsz,wght].ttf", 12, [14, 520], threshold=118),
     Face("ui12b",  "Inter[opsz,wght].ttf", 12, [14, 740], threshold=118),
     Face("ui14",   "Inter[opsz,wght].ttf", 14, [14, 450], threshold=120),
-    Face("ui14b",  "Inter[opsz,wght].ttf", 14, [14, 740], threshold=122),
-    Face("ui18b",  "Inter[opsz,wght].ttf", 18, [18, 720], threshold=124),
+    Face("ui14b",  "Inter[opsz,wght].ttf", 14, [14, 680], threshold=120),
+    Face("ui18b",  "Inter[opsz,wght].ttf", 18, [18, 680], threshold=122),
     Face("ui26b",  "Inter[opsz,wght].ttf", 26, [28, 800], threshold=126),
     Face("ui40b",  "Inter[opsz,wght].ttf", 40, [32, 800], threshold=124),
     # -- IBM Plex Mono: the instrument voice -------------------------------
     # 9 px Plex loses the vertex of M entirely; 11 px is where the caps still
     # hold their shape through the panel's front layer at a glance.
-    Face("label",  "IBMPlexMono-SemiBold.ttf", 11, threshold=122, tracking=1),
+    Face("label",  "IBMPlexMono-SemiBold.ttf", 11, threshold=122),
     Face("mono11", "IBMPlexMono-Regular.ttf",  12, threshold=118),
     Face("mono11b","IBMPlexMono-SemiBold.ttf", 12, threshold=118),
 ]
@@ -116,21 +116,48 @@ def bake(face: Face):
 
 
 def proof(baked, out: pathlib.Path):
-    """Render a proof sheet at 1:1 and 4x so small sizes can be judged."""
+    """Render the baked bitmap glyphs at 1:1 and 3x.
+
+    Drawing the TTF again here can hide differences introduced by thresholding,
+    tracking, and bitmap cropping. The proof must exercise the exact bytes the
+    firmware consumes.
+    """
     face = baked["face"]
     lines = [
         "Hamburgefonstiv 0123456789",
         "BEACON / agent mission control",
         "blocked · working · idle → done",
         "~/dev/zectrix-note4  main  12m34s",
+        "SELECTED · Approve once →",
     ]
-    font = load(face)
     width, lh = 460, baked["line"] + 3
     img = Image.new("1", (width, lh * len(lines) + 8), 1)
+    px = img.load()
+    by_cp = {g["cp"]: g for g in baked["glyphs"]}
+
+    def draw_line(text: str, x: int, baseline: int, ink: int) -> None:
+        for ch in text:
+            glyph = by_cp.get(ord(ch), by_cp.get(ord("?")))
+            if glyph is None:
+                continue
+            stride = (glyph["w"] + 7) // 8
+            for row in range(glyph["h"]):
+                for col in range(glyph["w"]):
+                    offset = glyph["off"] + row * stride + (col >> 3)
+                    if baked["blob"][offset] & (0x80 >> (col & 7)):
+                        gx = x + glyph["left"] + col
+                        gy = baseline - glyph["top"] + row
+                        if 0 <= gx < img.width and 0 <= gy < img.height:
+                            px[gx, gy] = ink
+            x += glyph["adv"]
+
     d = ImageDraw.Draw(img)
     for i, text in enumerate(lines):
-        d.text((6, 4 + i * lh + baked["ascent"]), text, font=font,
-               fill=0, anchor="ls")
+        top = 4 + i * lh
+        inverse = i == len(lines) - 1
+        if inverse:
+            d.rectangle((0, top - 1, width - 1, top + lh - 1), fill=0)
+        draw_line(text, 6, top + baked["ascent"], 1 if inverse else 0)
     big = img.resize((width * 3, img.height * 3), Image.NEAREST)
     sheet = Image.new("1", (width * 3, img.height + big.height + 10), 1)
     sheet.paste(img, (0, 2))

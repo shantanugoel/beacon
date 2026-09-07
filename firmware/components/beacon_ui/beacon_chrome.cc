@@ -178,6 +178,9 @@ void DrawHeader(Canvas& c, const char* title, const Fleet& f,
         c.Text(bx + 7, 18, title, beacon_font_label, ink::kPaper);
     }
 
+    /* The date already has a prominent home in quiet mode. Keeping it out of
+     * the working chrome leaves the right rail as a quick instrument read:
+     * time, radio, battery. */
     int x = kScreenW - 12;
     x -= 24;
     DrawBattery(c, x, 9, d, true);
@@ -192,11 +195,7 @@ void DrawHeader(Canvas& c, const char* title, const Fleet& f,
     const int cw = c.TextWidth(clock, beacon_font_mono11b);
     c.Text(x - cw, 19, clock, beacon_font_mono11b, ink::kPaper);
     x -= cw + 10;
-
-    if (f.date_label[0] != '\0') {
-        const int dw = c.TextWidth(f.date_label, beacon_font_label);
-        c.Text(x - dw, 18, f.date_label, beacon_font_label, ink::kPaper);
-    }
+    (void)f;
 }
 
 /* The footer is a hint rail, not a status bar: it always says what the three
@@ -207,18 +206,21 @@ void DrawFooter(Canvas& c, const char* left, const char* mid,
     c.DottedHLine(0, top, kScreenW, ink::kSolid, 3);
 
     const int base = kScreenH - 7;
+    /* Three fixed zones mirror the three physical interactions. Labels stay
+     * put as screens change, so the rail reads as hardware rather than prose. */
     int x = 12;
     if (left != nullptr) {
         // Up/down chevrons drawn as glyphs the font does not carry.
         for (int r = 0; r < 4; ++r) c.HLine(x + 3 - r, base - 9 + r, r * 2 + 1, ink::kSolid);
         for (int r = 0; r < 4; ++r) c.HLine(x + 3 - (3 - r), base - 4 + r, (3 - r) * 2 + 1, ink::kSolid);
         x += 12;
-        x += c.Text(x, base, left, beacon_font_label, ink::kSolid) + 18;
+        c.Text(x, base, left, beacon_font_label, ink::kSolid);
     }
     if (mid != nullptr) {
-        c.FillRect({x, base - 7, 6, 6}, ink::kSolid);
-        x += 11;
-        x += c.Text(x, base, mid, beacon_font_label, ink::kSolid) + 18;
+        const int w = c.TextWidth(mid, beacon_font_label);
+        const int tx = kScreenW / 2 - (w + 11) / 2 + 5;
+        c.FillRect({tx - 11, base - 7, 6, 6}, ink::kSolid);
+        c.Text(tx, base, mid, beacon_font_label, ink::kSolid);
     }
     if (right != nullptr) {
         const int w = c.TextWidth(right, beacon_font_label);

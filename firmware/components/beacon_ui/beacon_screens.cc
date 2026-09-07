@@ -26,7 +26,7 @@ constexpr int kSpineX = 30;          /* the vertical bus the fleet hangs off */
 constexpr int kRowTextX = 50;
 constexpr int kRowH = 34;
 constexpr int kRowsBottom = kScreenH - kFooterH - 6;
-constexpr int kAttentionH = 76;
+constexpr int kAttentionH = 80;
 
 /* Greedy word wrap. Returns the number of lines drawn (or measured when
  * canvas is null), never exceeding max_lines; the last line is ellipsized. */
@@ -99,6 +99,27 @@ void DrawStat(Canvas& c, int x, int y, int w, const char* key,
     c.TextEllipsized(x, y + 17, w, value, vf, ink::kSolid);
 }
 
+/* A small radar/beacon construction shared by transitional states. It uses
+ * sparse geometry rather than a bitmap so it remains crisp in both polarities
+ * and echoes the constellation in quiet mode without imitating it. */
+void DrawBeaconTarget(Canvas& c, int cx, int cy, int radius) {
+    c.FillRect({cx - 3, cy - 3, 7, 7}, ink::kSolid);
+    for (int r = radius / 2; r <= radius; r += radius / 2) {
+        for (int dy = -r; dy <= r; ++dy) {
+            for (int dx = -r; dx <= r; ++dx) {
+                const int d2 = dx * dx + dy * dy;
+                if (d2 < (r - 1) * (r - 1) || d2 > r * r) continue;
+                if (((dx + dy + r) & 3) == 0) {
+                    c.Pixel(cx + dx, cy + dy, ink::kSolid);
+                }
+            }
+        }
+    }
+    c.Line(cx + 5, cy - 5, cx + radius + 12, cy - radius - 12,
+           ink::kSolid);
+    c.FillRect({cx + radius + 10, cy - radius - 14, 4, 4}, ink::kSolid);
+}
+
 }  // namespace
 
 void Ui::DrawFleet(Canvas& c, const Fleet& f, const Device& d) {
@@ -134,8 +155,8 @@ void Ui::DrawFleet(Canvas& c, const Fleet& f, const Device& d) {
          * turned the top half of the screen into one mass, and e-ink pays for
          * every black pixel twice - in refresh time and in ghosting. */
         c.FillRect(band, ink::kPaper);
-        c.StrokeRect(band, ink::kSolid, on ? 3 : 1);
-        c.FillRect({band.x, band.y, on ? 8 : 5, band.h}, ink::kSolid);
+        c.StrokeRect(band, ink::kSolid);
+        c.FillRect({band.x, band.y, on ? 7 : 4, band.h}, ink::kSolid);
 
         const char* tag = "NEEDS YOU";
         const int tw = c.TextWidth(tag, beacon_font_label);
@@ -159,9 +180,9 @@ void Ui::DrawFleet(Canvas& c, const Fleet& f, const Device& d) {
 
         const int text_x = band.x + 16;
         const int text_w = band.w - 32;
-        c.TextEllipsized(text_x, band.y + 42, text_w, a.title,
+        c.TextEllipsized(text_x, band.y + 44, text_w, a.title,
                          beacon_font_ui14b, ink::kSolid);
-        DrawWrapped(&c, text_x, band.y + 57, text_w,
+        DrawWrapped(&c, text_x, band.y + 62, text_w,
                     a.question[0] ? a.question : a.activity,
                     beacon_font_ui12, ink::kSolid, 2, 14);
 
@@ -222,13 +243,16 @@ void Ui::DrawFleet(Canvas& c, const Fleet& f, const Device& d) {
     }
 
     if (f.count == 0) {
-        c.Text(kMarginX, rows_top + 30, "No sessions reporting.",
-               beacon_font_ui14b, ink::kSolid);
-        c.Text(kMarginX, rows_top + 50,
-               d.link == Link::kOnline
-                   ? "The hub is up but nothing is running."
-                   : "Waiting for the hub.",
-               beacon_font_ui12, ink::kSolid);
+        const int cx = kScreenW / 2;
+        DrawBeaconTarget(c, cx, rows_top + 70, 22);
+        c.TextAligned({0, 0, kScreenW, 0}, rows_top + 119,
+                      "No sessions reporting", beacon_font_ui18b,
+                      Align::kCenter, ink::kSolid);
+        c.TextAligned({0, 0, kScreenW, 0}, rows_top + 141,
+                      d.link == Link::kOnline
+                          ? "Hub online · waiting for an agent"
+                          : "Hub unavailable · retrying",
+                      beacon_font_ui12, Align::kCenter, ink::kSolid);
     }
 
     for (int k = first; k < n && k - first < capacity; ++k) {
@@ -238,16 +262,17 @@ void Ui::DrawFleet(Canvas& c, const Fleet& f, const Device& d) {
         const Rect row{kMarginX, ry, kContentR - kMarginX, kRowH - 3};
 
         if (selected) {
-            c.FillRect(row, ink::kSolid);
+            c.StrokeRect(row, ink::kSolid);
+            c.FillRect({row.x, row.y, 5, row.h}, ink::kSolid);
         } else if (a.status == Status::kBlocked) {
             // Unpromoted blocked agents still outrank an idle row.
             c.FillRect(row, ink::kWhisper);
             c.FillRect({row.x, row.y, 3, row.h}, ink::kSolid);
         }
 
-        DrawStatusMark(c, kSpineX, ry + 15, a.status, selected);
+        DrawStatusMark(c, kSpineX, ry + 15, a.status, false);
 
-        const Ink fg = selected ? ink::kPaper : ink::kSolid;
+        const Ink fg = ink::kSolid;
 
         char age[10];
         FormatDuration(a.status_age_s, age, sizeof(age));
@@ -280,9 +305,9 @@ void Ui::DrawFleet(Canvas& c, const Fleet& f, const Device& d) {
         if (a.focused) {
             // Solid caret beside the mark: "this is the pane on your screen
             // right now" - the one row you do not need the device for.
-            const Ink fg2 = selected ? ink::kPaper : ink::kSolid;
+            const Ink fg2 = ink::kSolid;
             for (int k = 0; k < 4; ++k) {
-                c.VLine(kSpineX - 16 + k, ry + 11 + k, 9 - 2 * k, fg2);
+                c.VLine(kSpineX + 9 + k, ry + 11 + k, 9 - 2 * k, fg2);
             }
         }
     }
@@ -374,10 +399,14 @@ void Ui::DrawAgent(Canvas& c, const Fleet& f, const Device& d) {
             DrawWrapped(nullptr, 0, 0, inner_w, body, beacon_font_ui12,
                         ink::kSolid, 3, 15);
         const Rect card{kMarginX, y, content_w, 22 + body_lines * 15};
-        c.FillRect(card, asking ? ink::kPaper : ink::kWhisper);
+        c.FillRect(card, ink::kPaper);
         if (asking) {
-            c.StrokeRect(card, ink::kSolid);
-            c.FillRect({card.x, card.y, 5, card.h}, ink::kSolid);
+            c.HLine(card.x, card.y, card.w, ink::kSolid);
+            c.HLine(card.x, card.bottom() - 1, card.w, ink::kSolid);
+            c.FillRect({card.x, card.y, 4, card.h}, ink::kSolid);
+        } else {
+            c.HLine(card.x, card.y, card.w, ink::kWhisper);
+            c.HLine(card.x, card.bottom() - 1, card.w, ink::kWhisper);
         }
         c.Text(card.x + 14, card.y + 13, asking ? "ASKING" : "ACTIVITY",
                beacon_font_label, ink::kSolid);
@@ -424,18 +453,19 @@ void Ui::DrawAgent(Canvas& c, const Fleet& f, const Device& d) {
     // -- actions ----------------------------------------------------------
     if (a->action_count > 0) {
         const int fits = std::max(1, (kRowsBottom - y - 16) / 26);
-        char rule_right[32] = {};
-        if (fits < a->action_count) {
-            snprintf(rule_right, sizeof(rule_right), "%d OF %d SHOWN", fits,
-                     static_cast<int>(a->action_count));
-        }
-        DrawSectionRule(c, y + 9, a->actionable ? "RESPOND" : "VIEW ONLY",
-                        rule_right[0] ? rule_right : nullptr);
-        y += 16;
         int first = 0;
         if (action_cursor_ >= fits) first = action_cursor_ - fits + 1;
         if (first > a->action_count - fits) first = a->action_count - fits;
         if (first < 0) first = 0;
+        const int last = std::min<int>(a->action_count, first + fits);
+        char rule_right[32] = {};
+        if (fits < a->action_count) {
+            snprintf(rule_right, sizeof(rule_right), "%d-%d / %d", first + 1,
+                     last, static_cast<int>(a->action_count));
+        }
+        DrawSectionRule(c, y + 9, a->actionable ? "RESPOND" : "VIEW ONLY",
+                        rule_right[0] ? rule_right : nullptr);
+        y += 16;
         for (uint8_t i = first;
              i < a->action_count && i - first < fits; ++i) {
             const Rect r{kMarginX, y + (i - first) * 26, content_w, 24};
@@ -443,10 +473,16 @@ void Ui::DrawAgent(Canvas& c, const Fleet& f, const Device& d) {
             if (on) {
                 c.FillRect(r, ink::kSolid);
             } else {
-                c.StrokeRect(r, ink::kSolid);
+                c.HLine(r.x, r.bottom() - 1, r.w, ink::kSolid);
             }
-            c.Text(r.x + 12, r.y + 17, a->actions[i].label, beacon_font_ui14b,
+            char ordinal[4];
+            snprintf(ordinal, sizeof(ordinal), "%u",
+                     static_cast<unsigned>(i + 1));
+            c.Text(r.x + 7, r.y + 17, ordinal, beacon_font_label,
                    on ? ink::kPaper : ink::kSolid);
+            c.TextEllipsized(r.x + 29, r.y + 17, r.w - 55,
+                             a->actions[i].label, beacon_font_ui14b,
+                             on ? ink::kPaper : ink::kSolid);
             if (on) {
                 for (int k = 0; k < 5; ++k) {
                     c.VLine(r.right() - 18 + k, r.y + 7 + k, 11 - 2 * k,
@@ -454,7 +490,18 @@ void Ui::DrawAgent(Canvas& c, const Fleet& f, const Device& d) {
                 }
             }
         }
-        // More actions than fit: mark the edge rather than silently hiding.
+        // Edge pips make off-screen actions visible without another caption.
+        if (first > 0) {
+            for (int row = 0; row < 4; ++row)
+                c.HLine(kContentR - 7 - row, y + 5 + row, row * 2 + 1,
+                        ink::kSolid);
+        }
+        if (last < a->action_count) {
+            const int by = y + fits * 26 - 6;
+            for (int row = 0; row < 4; ++row)
+                c.HLine(kContentR - 10 + row, by + row, 7 - row * 2,
+                        ink::kSolid);
+        }
     }
 
     if (toast_ttl_ > 0 && toast_[0] != '\0') {
@@ -474,7 +521,7 @@ void Ui::DrawSystem(Canvas& c, const Fleet& f, const Device& d) {
     c.Clear(ink::kPaper);
     DrawHeader(c, "SYSTEM", f, d);
 
-    int y = kHeaderH + 20;
+    int y = kHeaderH + 16;
     const int col = (kContentR - kMarginX) / 2;
 
     const char* link = "—";
@@ -487,8 +534,8 @@ void Ui::DrawSystem(Canvas& c, const Fleet& f, const Device& d) {
         case Link::kOffline: link = "OFFLINE"; break;
     }
 
-    DrawSectionRule(c, y, "LINK", link);
-    y += 18;
+    DrawSectionRule(c, y, "CONNECTION", link);
+    y += 15;
     char rssi[16], sync[16], batt[16], up[16], refresh[24];
     snprintf(rssi, sizeof(rssi), "%d dBm", d.rssi);
     FormatDuration(d.last_sync_age_s, sync, sizeof(sync));
@@ -499,29 +546,40 @@ void Ui::DrawSystem(Canvas& c, const Fleet& f, const Device& d) {
              static_cast<unsigned>(d.full_refreshes),
              static_cast<unsigned>(d.partial_refreshes));
 
-    DrawStat(c, kMarginX, y, col - 10, "NETWORK", d.ssid[0] ? d.ssid : "—",
-             beacon_font_ui14b);
+    const Rect link_card{kMarginX, y, kContentR - kMarginX, 106};
+    c.HLine(link_card.x, link_card.y, link_card.w, ink::kSolid);
+    c.HLine(link_card.x, link_card.bottom() - 1, link_card.w, ink::kSolid);
+    c.FillRect({link_card.x, link_card.y, 4, link_card.h}, ink::kSolid);
+    y += 14;
+    DrawStat(c, kMarginX + 14, y, col - 20, "NETWORK",
+             d.ssid[0] ? d.ssid : "—", beacon_font_ui14b);
     DrawStat(c, kMarginX + col, y, col - 10, "SIGNAL", rssi,
              beacon_font_ui14b);
     y += 34;
-    DrawStat(c, kMarginX, y, col - 10, "ADDRESS", d.ip[0] ? d.ip : "—",
+    DrawStat(c, kMarginX + 14, y, col - 20, "ADDRESS", d.ip[0] ? d.ip : "—",
              beacon_font_ui14b);
     DrawStat(c, kMarginX + col, y, col - 10, "LAST SYNC", sync,
              beacon_font_ui14b);
     y += 34;
-    c.Text(kMarginX, y, "HUB", beacon_font_label, ink::kSolid);
-    c.TextEllipsized(kMarginX, y + 16, kContentR - kMarginX,
+    c.Text(kMarginX + 14, y, "HUB", beacon_font_label, ink::kSolid);
+    c.TextEllipsized(kMarginX + 14, y + 16, kContentR - kMarginX - 24,
                      d.hub[0] ? d.hub : "—", beacon_font_mono11,
                      ink::kSolid);
-    y += 36;
+    y = link_card.bottom() + 16;
 
     DrawSectionRule(c, y, "DEVICE", d.firmware);
-    y += 18;
-    DrawStat(c, kMarginX, y, col - 10, "BATTERY",
+    y += 15;
+    const Rect device_card{kMarginX, y, kContentR - kMarginX, 72};
+    c.HLine(device_card.x, device_card.y, device_card.w, ink::kSolid);
+    c.HLine(device_card.x, device_card.bottom() - 1, device_card.w,
+            ink::kSolid);
+    y += 14;
+    DrawStat(c, kMarginX + 14, y, col - 20, "BATTERY",
              d.battery_valid ? batt : "USB", beacon_font_ui14b);
     DrawStat(c, kMarginX + col, y, col - 10, "UPTIME", up, beacon_font_ui14b);
     y += 34;
-    DrawStat(c, kMarginX, y, kContentR - kMarginX, "PANEL REFRESHES", refresh,
+    DrawStat(c, kMarginX + 14, y, kContentR - kMarginX - 24,
+             "PANEL REFRESHES", refresh,
              beacon_font_ui14b);
 
     DrawFooter(c, nullptr, nullptr, "BACK");
@@ -542,9 +600,11 @@ void Ui::DrawSplash(Canvas& c, const Fleet& f, const Device& d) {
     }
 
     const int cx = kScreenW / 2;
-    DrawWordmark(c, cx - 52, 132, false);
-    // The wordmark at splash scale: redraw the lettering larger beneath it.
-    c.FillRect({cx - 60, 146, 120, 2}, ink::kSolid);
+    DrawBeaconTarget(c, cx, 91, 24);
+    const int brand_w = c.TextWidth("BEACON", beacon_font_ui26b);
+    c.Text(cx - brand_w / 2, 146, "BEACON", beacon_font_ui26b,
+           ink::kSolid);
+    c.HLine(cx - 70, 158, 140, ink::kSolid);
 
     const char* msg = "STARTING";
     switch (d.link) {
@@ -554,13 +614,13 @@ void Ui::DrawSplash(Canvas& c, const Fleet& f, const Device& d) {
         case Link::kDegraded: msg = "HUB UNREACHABLE"; break;
         default: break;
     }
-    c.TextAligned({0, 0, kScreenW, 0}, 176, msg, beacon_font_mono11b,
+    c.TextAligned({0, 0, kScreenW, 0}, 184, msg, beacon_font_mono11b,
                   Align::kCenter, ink::kSolid);
-    c.TextAligned({0, 0, kScreenW, 0}, 196, "AGENT MISSION CONTROL",
+    c.TextAligned({0, 0, kScreenW, 0}, 207, "AGENT MISSION CONTROL",
                   beacon_font_label, Align::kCenter, ink::kSolid);
 
     if (d.link == Link::kOffline || d.link == Link::kDegraded) {
-        c.TextAligned({0, 0, kScreenW, 0}, 224,
+        c.TextAligned({0, 0, kScreenW, 0}, 233,
                       d.ssid[0] ? d.ssid : "no network configured",
                       beacon_font_ui12, Align::kCenter, ink::kSolid);
         DrawFooter(c, nullptr, "RETRY", "SYSTEM");
