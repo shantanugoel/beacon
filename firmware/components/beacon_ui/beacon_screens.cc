@@ -264,7 +264,7 @@ void Ui::DrawFleet(Canvas& c, const Fleet& f, const Device& d) {
         c.TextEllipsized(kRowTextX, ry + 15, text_w, a.title,
                          beacon_font_ui14b, fg);
 
-        char meta[96];
+        char meta[192];  // machine + project + branch + activity
         if (a.activity[0] != '\0' &&
             (a.status == Status::kWorking || a.status == Status::kBlocked)) {
             snprintf(meta, sizeof(meta), "%s · %s", a.machine, a.activity);
@@ -295,7 +295,7 @@ void Ui::DrawFleet(Canvas& c, const Fleet& f, const Device& d) {
             for (int r = 0; r < 5; ++r) {
                 c.HLine(kSpineX - 4 + r, fy + r, 9 - 2 * r, ink::kSolid);
             }
-            char more[8];
+            char more[16];
             snprintf(more, sizeof(more), "+%d", n - first - capacity);
             c.Text(kSpineX + 10, fy + 8, more, beacon_font_label, ink::kSolid);
         }
@@ -397,15 +397,19 @@ void Ui::DrawAgent(Canvas& c, const Fleet& f, const Device& d) {
     if (have_stats && room >= action_block + stat_block) {
         char tokens[16], cost[16], diff[24];
         if (a->tokens >= 1000) {
-            snprintf(tokens, sizeof(tokens), "%u.%uk", a->tokens / 1000,
-                     (a->tokens % 1000) / 100);
+            snprintf(tokens, sizeof(tokens), "%u.%uk",
+                     static_cast<unsigned>(a->tokens / 1000),
+                     static_cast<unsigned>((a->tokens % 1000) / 100));
         } else {
-            snprintf(tokens, sizeof(tokens), "%u", a->tokens);
+            snprintf(tokens, sizeof(tokens), "%u",
+                     static_cast<unsigned>(a->tokens));
         }
-        snprintf(cost, sizeof(cost), "$%u.%02u", a->cost_milli / 1000,
-                 (a->cost_milli % 1000) / 10);
-        snprintf(diff, sizeof(diff), "+%d/-%d", a->lines_added,
-                 a->lines_removed);
+        snprintf(cost, sizeof(cost), "$%u.%02u",
+                 static_cast<unsigned>(a->cost_milli / 1000),
+                 static_cast<unsigned>((a->cost_milli % 1000) / 10));
+        snprintf(diff, sizeof(diff), "+%d/-%d",
+                 static_cast<int>(a->lines_added),
+                 static_cast<int>(a->lines_removed));
         const int col = content_w / 3;
         DrawStat(c, kMarginX, y + 8, col - 8, "TOKENS", tokens,
                  beacon_font_ui14b);
@@ -420,10 +424,10 @@ void Ui::DrawAgent(Canvas& c, const Fleet& f, const Device& d) {
     // -- actions ----------------------------------------------------------
     if (a->action_count > 0) {
         const int fits = std::max(1, (kRowsBottom - y - 16) / 26);
-        char rule_right[16] = {};
+        char rule_right[32] = {};
         if (fits < a->action_count) {
             snprintf(rule_right, sizeof(rule_right), "%d OF %d SHOWN", fits,
-                     a->action_count);
+                     static_cast<int>(a->action_count));
         }
         DrawSectionRule(c, y + 9, a->actionable ? "RESPOND" : "VIEW ONLY",
                         rule_right[0] ? rule_right : nullptr);

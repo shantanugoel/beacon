@@ -177,3 +177,124 @@ the layouts reviewable as images in this repo.
   layer, versus how it looks in the simulator.
 - Whether `agent.read` pane text is clean enough to extract a one-line
   "current activity" string reliably.
+
+---
+
+## 7. What the simulator taught us (before any hardware)
+
+**Dither is for areas, never for type.** The very first render used the ink
+scale for secondary text — 25% grey for row metadata, 50% for footer hints. On
+screen it looked like a smudge: at 9–12 px an ordered-dither pattern eats more
+pixels than the letterforms have. Every string on every screen is now drawn at
+full ink or full paper, and hierarchy is carried entirely by size, weight and
+space. The tonal scale survives, but only for fills, bands and rules.
+
+**Do not say the same thing twice on a 400x300 panel.** The promoted "needs
+you" agent was also appearing as the first row of the fleet list. Cutting the
+duplicate bought back a row *and* made the band read as a distinct object
+rather than a restatement.
+
+**A black slab under a black header is one mass.** Selecting the attention
+band originally inverted it. Directly below the solid header that turned the
+top half of the screen into a single block — and on e-ink you pay for black
+pixels twice, in refresh time and in ghosting. Selection is now shown by
+border weight plus a caret; full inversion is reserved for list rows, where it
+is surrounded by white.
+
+**Bottom-anchored blocks collide.** The session screen originally pinned the
+action list to the bottom and let the content grow down into it. On a fixed
+300 px panel that is a collision waiting to happen. It now flows strictly
+top-down against an explicit budget, and when the page runs out of room it is
+the *least* important block (the stat row) that gets dropped, never the
+actions.
+
+**9 px is below IBM Plex Mono's floor.** At 9 px the capital M loses its
+middle vertex entirely. The label face moved to 10 px.
+
+**Stepping angles does not draw a cone.** The ambient screen's beam started as
+a fan of rays at fixed angular steps; as radius grows those rays separate and
+the result reads as moiré, not light. It is now evaluated per pixel — about
+120k integer operations, which is nothing next to the refresh that follows.
+
+**Hashing alone is not a layout.** Placing each session at a hash-derived
+angle let two sessions on the same ring land on top of each other, which made
+a calm fleet look like a broken one. Position is now an even spread by index
+with a per-id jitter.
+
+---
+
+## 8. Hardware measurements
+
+Measured on the device via `beacon-preview`, a console command that draws every
+screen and times each refresh mode. Times are the wall clock around the
+driver's synchronous BUSY handshake.
+
+| Refresh | Region | Measured |
+| --- | --- | --- |
+| Full 1bpp | 400 x 300 | **1121 ms** |
+| Partial 1bpp | 40 x 110 (3%) | **758 ms** |
+| Partial 1bpp | 384 x 284 (90%) | ~760 ms |
+| Full 4bpp (16-grey) | 400 x 300 | **8211 ms** (incl. the mandatory white 1bpp flush) |
+
+Two results reshaped the design:
+
+**Partial refresh is not much faster than full, and its cost does not scale
+with area.** 758 ms for 3% of the panel and about the same for 90% of it: the
+SSD2683's partial waveform is a fixed-length sequence. So partial refresh is
+not a performance optimisation at all — its entire value is that it *does not
+flash*. That reframes the diffing logic in `Display::Present`: it is there to
+keep the screen calm, not to make it quick. It also means there is no reason
+to chase a tighter dirty rectangle.
+
+**Elapsed times must be shown at minute resolution.** A refresh costs ~760 ms,
+so the panel updates about once a minute. Rendering "4m12s" would put a
+seconds field on screen that is stale almost all the time. Durations above a
+minute are now shown to the minute; below a minute, where a fresh block really
+does want seconds, they are exact. The display no longer claims precision it
+cannot honour.
+
+**16-grey costs eight seconds**, and the device cannot service buttons while it
+runs. That is affordable precisely because the ambient screen is entered only
+after several minutes of inactivity and left by a fast 1bpp refresh — but it
+confirms that spending greyscale anywhere in the interactive path would have
+been a mistake.
+
+Rendering the whole frame and diffing it costs about a millisecond of CPU;
+next to 758 ms of panel time it does not appear in the measurements. Keeping
+per-widget invalidation out of the screen code was free.
+
+---
+
+## 9. Bugs worth remembering
+
+**A `Fleet` is 8.5 KB, and the main task stack was 8 KB.** Copying one into a
+local — `const Fleet saved = g_fleet;` — overflowed the stack and corrupted the
+heap. It surfaced as a `LoadProhibited` panic inside `spi_bus_remove_device`,
+three layers down in the display driver, which is about as misleading as a
+backtrace gets. Every `Fleet` now lives in static storage, there is a
+`static_assert` saying why, and the same latent bug was present in the normal
+network path, not just the preview.
+
+**The provisioning console was unreachable over the only cable the device
+has.** With ESP-IDF's default console configuration, logs are mirrored to
+USB-Serial/JTAG but *input* is routed to UART0 on GPIO43/44. Serial writes
+simply blocked forever. `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` makes USB the
+primary console, which is the only sane setting for this board.
+
+**Internal RAM is the scarce resource, not flash.** The 120 KB greyscale
+scratch surface and three `Fleet` snapshots overflowed DRAM by 16 KB while the
+app partition sat 74% empty. They are now placed in PSRAM via
+`EXT_RAM_BSS_ATTR` (`beacon_mem.h`). The 1bpp canvas deliberately stays in
+internal RAM: it is a SPI DMA source and the hot path for every draw call.
+
+**herdr's per-pane `focused` flag does not mean "the pane you are looking
+at".** It means "focused within its own tab", so on a multi-workspace setup
+almost every pane claims it. The focus caret uses `pane.current` instead.
+
+**Toolchain, for the next person:** this machine's ESP-IDF came from the
+ESP-IDF Installation Manager. The checkout's own `export.sh` fails (it looks
+for a venv under `~/.espressif/python_env`); the entry point is
+`~/.espressif/tools/activate_idf_v6.1.sh`, which additionally refuses to be
+sourced from a script and exposes `idf.py` only as a shell function. The
+supported non-interactive path is `activate_idf_v6.1.sh -e`, which prints the
+environment — see `tools/idf.sh`.

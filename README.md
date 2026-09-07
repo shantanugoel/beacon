@@ -1,0 +1,189 @@
+# BEACON
+
+**Agent mission control for the ZECTRIX NOTE4.**
+
+An always-on 4.2" e-paper instrument for the coding agents you have running
+across your machines. It tells you what they are doing, gets loud exactly once
+when one of them needs you, and lets you answer it from across the room —
+using the agent's own options, not a guess at what they mean.
+
+![Fleet screen](docs/img/01-fleet-attention.png)
+
+---
+
+## What it is
+
+Three parts:
+
+```
+  machine A ──┐
+  machine B ──┼── beacon agentd ──HTTP──▶ beacon hub ◀──HTTP── NOTE4 firmware
+  machine C ──┘   collect + act           aggregate,           render + input
+                                          long-poll
+```
+
+- **collector** — watches the agents on one machine. Prefers
+  [herdr](https://github.com/) (push-based, and the only source that can write
+  back into a session); falls back to reading Claude Code transcripts, which is
+  read-only.
+- **hub** — one URL for the device. Holds the fleet, long-polls, and relays
+  actions to the machine that owns the session.
+- **firmware** — owns the UI. The hub sends compact state; the device decides
+  what to draw and how to put it on the panel.
+
+The device renders its own screens rather than blitting a server-drawn bitmap.
+That costs a real font pipeline and a drawing stack on-device, and buys a UI
+that responds to a button in milliseconds and still shows you the last known
+fleet when the hub goes away.
+
+## The screens
+
+| | |
+|---|---|
+| ![Session](docs/img/02-agent-blocked.png) | ![Quiet](docs/img/06-quiet-busy.png) |
+| **Session** — what it is asking, and the options it is actually offering | **Quiet** — 16-grey ambient screen for a desk at rest |
+
+- **Fleet** — the home screen. A "needs you" band at the top when something is
+  waiting, then every session on a spine: status, title, machine, what it is
+  doing, how long it has been in that state.
+- **Session** — one agent in full, and the buttons to answer it.
+- **Quiet** — after a few minutes of no input and nothing waiting, the panel
+  becomes a constellation: one star per session, brightness by state, all
+  orbiting the hub, with a beam whose bearing is the time of day.
+- **System** — radio, hub, battery, panel wear.
+
+**Controls.** Three buttons, so: `UP`/`DOWN` move, `OK` selects, `OK` held goes
+back. From the fleet screen, holding `OK` drops straight into quiet mode.
+Holding `DOWN` for three seconds powers the device down.
+
+## Answering an agent from the device
+
+When herdr reports a session as *blocked*, the collector reads the pane and
+parses the numbered prompt the agent printed:
+
+```
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don't ask again for idf.py commands
+   3. No, and tell Claude what to do differently
+```
+
+Those become the buttons on the device, verbatim. Pressing one sends that
+digit back to that pane. BEACON never invents an option and never assumes
+"1 means yes" — if it did not read the option off the screen, it does not
+offer it. Three guards keep a numbered list in prose from becoming a set of
+buttons: the run must start at 1 and be contiguous, it must be at the live end
+of the pane rather than in scrollback, and it must be introduced by something
+that reads as a question. On top of that, options are only ever shown for a
+session herdr independently reports as blocked.
+
+Every session also gets **Focus this pane**, which makes your desktop jump to
+it — pick it up on the device, keep going on the laptop.
+
+---
+
+## Running it
+
+### 1. The hub
+
+```bash
+python -m beacon hub --port 8787          # from ./host, no dependencies
+```
+
+This also collects from the local machine. Open `http://<host>:8787/` in a
+browser for a plain-text view of what the device is seeing.
+
+For other machines:
+
+```bash
+python -m beacon agentd --hub http://<hub-host>:8787
+```
+
+`agentd` never listens on a port — it long-polls the hub for actions the same
+way the device long-polls it for state. One firewall hole, at the hub.
+
+To see what the collector makes of the local machine without running anything
+else:
+
+```bash
+python -m beacon watch
+```
+
+### 2. The firmware
+
+Requires ESP-IDF 5.4+ (developed against 6.1). `tools/idf.sh` wraps the local
+toolchain; use `idf.py` directly if your install is a standard one.
+
+```bash
+tools/idf.sh set-target esp32s3
+tools/idf.sh build
+tools/idf.sh -p /dev/ttyACM0 flash monitor
+```
+
+### 3. Provisioning
+
+Credentials live in NVS, so they survive a reflash. Over the serial console:
+
+```
+beacon-set ssid    your-network
+beacon-set pass    your-password
+beacon-set hub     http://192.168.1.10:8787
+beacon-save
+beacon-reboot
+```
+
+`beacon-show` prints the current configuration (the password only as `(set)`),
+and `beacon-preview` draws every screen on the panel and logs how long each
+refresh mode took — useful for checking the display end to end before the
+network is up. Defaults for a first boot can also be baked in through
+`idf.py menuconfig` → **BEACON**.
+
+---
+
+## Working on the look
+
+The drawing stack is plain C++ over a framebuffer, so it compiles twice: into
+the firmware, and into a host binary that writes PNGs.
+
+```bash
+cd sim && make run        # writes sim/out/*.png in about a second
+```
+
+That is the whole design loop. Reflashing to nudge a margin is a 60-second
+round trip and you cannot diff two photographs.
+
+Fonts are baked from TTFs into packed 1bpp glyph tables:
+
+```bash
+python tools/bake_fonts.py     # ~29 KiB of glyphs, plus proof sheets
+```
+
+## Layout
+
+```
+firmware/
+  components/beacon_gfx/   canvas, ordered-dither ink scale, fonts, 16-grey surface
+  components/beacon_ui/    screens and input - pure, host-buildable
+  components/zectrix_*/    vendor SSD2683 driver and board support (MIT, Zectrix Lab)
+  main/                    wi-fi, hub client, refresh policy, console
+host/beacon/               collector, pane parser, hub, agentd
+sim/                       host build of the UI, writes PNGs
+tools/                     font baker, idf wrapper, serial monitor
+docs/RESEARCH_LOG.md       what was found, what was decided, what it cost
+```
+
+## Notes on the panel
+
+400 x 300 at ~119 ppi, and three refresh modes with awkward constraints: 16-grey
+destroys the base image that partial refresh needs, and partial refresh takes
+758 ms whether it covers 3% of the panel or 90%. The design follows from that —
+greyscale is spent only on the ambient screen, tone in the interactive screens
+comes from an ordered-dither ink scale, and elapsed times are shown at the
+resolution the panel can actually keep up with. `docs/RESEARCH_LOG.md` §8 has
+the measurements.
+
+## Licence
+
+MIT. `firmware/components/zectrix_epd` and `firmware/components/zectrix_board`
+are from the ZECTRIX NOTE4 e-paper reference demo, © 2026 Zectrix Lab, MIT —
+see `licenses/`. Inter and IBM Plex Mono are SIL Open Font License.

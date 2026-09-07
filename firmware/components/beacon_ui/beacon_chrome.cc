@@ -22,13 +22,20 @@ const char* StatusWord(Status s) {
     }
 }
 
+/* Resolution deliberately matches how often the panel actually redraws.
+ *
+ * The measured cost of a partial refresh on this panel is ~760 ms, so the
+ * device updates roughly once a minute, not once a second. Printing "4m12s"
+ * would render a seconds field that is stale almost all the time - precision
+ * the display cannot honour. Above a minute the value is therefore shown to
+ * the minute; below a minute, where a fresh block genuinely does want
+ * seconds, it is shown exactly. */
 void FormatDuration(uint32_t seconds, char* out, int cap) {
     if (cap <= 0) return;
     if (seconds < 60) {
         snprintf(out, cap, "%us", static_cast<unsigned>(seconds));
     } else if (seconds < 3600) {
-        snprintf(out, cap, "%um%02us", static_cast<unsigned>(seconds / 60),
-                 static_cast<unsigned>(seconds % 60));
+        snprintf(out, cap, "%um", static_cast<unsigned>(seconds / 60));
     } else if (seconds < 86400) {
         snprintf(out, cap, "%uh%02um", static_cast<unsigned>(seconds / 3600),
                  static_cast<unsigned>((seconds % 3600) / 60));

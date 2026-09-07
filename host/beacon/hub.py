@@ -93,8 +93,12 @@ class Hub:
         records = self._all_records()
         hour, minute, _ = self._local_time()
         # The clock is part of the digest so the device's header stays honest
-        # without a separate timer, but only to the minute - a per-second
-        # revision would mean a panel refresh every second.
+        # without a separate timer on the device - but only to the minute. A
+        # per-second revision would mean a panel refresh every second, and a
+        # refresh on this panel costs ~760 ms.
+        #
+        # Elapsed times are rendered at minute resolution for the same reason,
+        # so a minute tick is also exactly what makes them advance.
         return (hour, minute, tuple(r.digest() for r in records[:MAX_AGENTS]))
 
     async def bump_if_changed(self) -> None:
@@ -125,8 +129,15 @@ class Hub:
         machine = agent_id.split(":", 1)[0]
         if self.local is not None and agent_id in self.local.agents:
             return "local"
-        self.commands.setdefault(machine, []).append(
-            {"agent": agent_id, "action": action_id, "at": time.time()})
+        if machine not in self.remote:
+            # Nothing has ever reported this machine, so nothing will ever
+            # collect the command. Queueing it would just leak.
+            return "unknown machine"
+        queue = self.commands.setdefault(machine, [])
+        # A machine that has gone away must not accumulate an unbounded
+        # backlog that all fires at once when it returns.
+        queue[:] = [c for c in queue if time.time() - c["at"] < 120][-15:]
+        queue.append({"agent": agent_id, "action": action_id, "at": time.time()})
         event = self.command_waiters.get(machine)
         if event is not None:
             event.set()

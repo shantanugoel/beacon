@@ -1,0 +1,42 @@
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+CONFIG_COMPILER_CXX_EXCEPTIONS=n
+
+# 8 MB of octal PSRAM: the 60 KB greyscale frame, the 120 KB scratch surface
+# and the previous-frame copy used for partial-refresh diffing all live here.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+
+# The UI task walks the whole fleet and the drawing code nests a few levels;
+# 8 KB left almost no margin once Fleet copies were removed.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=12288
+CONFIG_FREERTOS_HZ=1000
+
+# Long-poll holds a socket open for ~25 s; the default 5 s would tear it down.
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=8
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+CONFIG_LWIP_SO_RCVBUF=y
+
+# The NOTE4 exposes only USB-Serial/JTAG. With the default UART console, logs
+# are mirrored to USB but *input* goes to GPIO43/44, so the provisioning
+# console is unreachable over the only cable the device has. Make USB the
+# primary console so `beacon-set` works over /dev/ttyACM0.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=n
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# Lets EXT_RAM_BSS_ATTR place the greyscale scratch surface and the Fleet
+# snapshots in PSRAM; without it they land in DRAM and overflow it.
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+
+# First-boot default for this desk: the hub runs on the hub machine. NVS overrides
+# it, so `beacon-set hub <url>` is enough to point the device somewhere else
+# without rebuilding.
+CONFIG_BEACON_HUB_URL="http://192.168.1.10:8787"

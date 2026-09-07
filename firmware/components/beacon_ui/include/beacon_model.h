@@ -1,9 +1,27 @@
 #ifndef BEACON_MODEL_H_
 #define BEACON_MODEL_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 namespace beacon {
+
+/* Truncating copy into a fixed display field.
+ *
+ * Every string in this model is sized for a column on a 400 px panel, so
+ * losing the tail of an over-long title is the intended behaviour, not a bug.
+ * Saying that explicitly keeps -Wformat-truncation (which the ESP-IDF build
+ * treats as an error) meaningful for the cases where truncation *is* a bug. */
+inline void CopyField(char* dst, size_t cap, const char* src) {
+    if (dst == nullptr || cap == 0) return;
+    if (src == nullptr) {
+        dst[0] = '\0';
+        return;
+    }
+    size_t i = 0;
+    for (; i + 1 < cap && src[i] != '\0'; ++i) dst[i] = src[i];
+    dst[i] = '\0';
+}
 
 /* Mirrors herdr's AgentStatus so no translation is needed at the edge, plus
  * kStale for records the hub has stopped hearing about. */

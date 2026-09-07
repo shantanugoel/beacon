@@ -1,0 +1,4 @@
+dependencies:
+  # Pulled in by the ES8311 adapter. BEACON only uses the codec for the
+  # attention chirp, but the board component links it unconditionally.
+  espressif/esp_codec_dev: "~1.5"

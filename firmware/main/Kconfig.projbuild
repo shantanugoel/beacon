@@ -1,0 +1,27 @@
+menu "BEACON"
+
+config BEACON_WIFI_SSID
+    string "Default Wi-Fi SSID"
+    default ""
+    help
+      First-boot default. NVS overrides this; set it at runtime with
+      "beacon-set ssid <name>" over the USB serial console.
+
+config BEACON_WIFI_PASSWORD
+    string "Default Wi-Fi password"
+    default ""
+
+config BEACON_HUB_URL
+    string "Default hub base URL"
+    default "http://192.168.1.10:8787"
+
+config BEACON_HUB_TOKEN
+    string "Default hub bearer token"
+    default ""
+
+config BEACON_QUIET_AFTER_S
+    int "Seconds of inactivity before the ambient screen"
+    default 180
+    range 30 3600
+
+endmenu

@@ -1,5 +1,6 @@
 .venv/
 sim/out/*.png
+!docs/img/*.png
 sim/out/beacon-sim
 sim/out/fonts/
 firmware/build/

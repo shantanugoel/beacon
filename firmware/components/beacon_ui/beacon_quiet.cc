@@ -13,6 +13,7 @@
 
 #include "beacon_fonts.h"
 #include "beacon_gray.h"
+#include "beacon_mem.h"
 #include "beacon_ui.h"
 
 namespace beacon {
@@ -53,7 +54,9 @@ int Cos1024(int a) { return Sin1024(a + 64); }
 }  // namespace
 
 void Ui::RenderQuiet4bpp(uint8_t* gray, const Fleet& f, const Device& d) {
-    static GrayCanvas g;  /* 120 KB - too big for the stack on either target */
+    /* 120 KB: far too big for a task stack, and too big for internal RAM
+     * on this part - see beacon_mem.h. */
+    static BEACON_BIG_BSS GrayCanvas g;
     g.Clear(GrayCanvas::kPaper);
 
     /* ---- the beam --------------------------------------------------------

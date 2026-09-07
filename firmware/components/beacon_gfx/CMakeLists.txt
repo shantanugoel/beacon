@@ -3,4 +3,5 @@ idf_component_register(
          "beacon_gray.cc"
          "generated/beacon_fonts.c"
     INCLUDE_DIRS "include" "generated"
+    REQUIRES esp_common
 )
