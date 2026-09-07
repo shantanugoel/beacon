@@ -7,8 +7,10 @@
  * beacon_net. This file is the policy that connects them.
  */
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 #include "beacon_canvas.h"
 #include "beacon_config.h"
@@ -25,6 +27,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "audio_codec.h"
 #include "zectrix_board.h"
 #include "zectrix_board_config.h"
 
@@ -42,10 +45,10 @@ constexpr int64_t kShutdownHoldUs = 3'000'000;
 constexpr TickType_t kIdleTick = pdMS_TO_TICKS(5000);
 
 beacon::Canvas g_canvas;   /* 15 KB, internal RAM: SPI DMA source, hot path */
-BEACON_BIG_BSS uint8_t g_gray[beacon::kScreenW * beacon::kScreenH / 2];
+uint8_t* g_gray = nullptr; /* 60 KB packed 4bpp frame, allocated from PSRAM */
 
 beacon::Config g_config;
-BEACON_BIG_BSS beacon::Net g_net;   /* holds a Fleet; see beacon_mem.h */
+beacon::Net g_net;
 beacon::Display g_display;
 beacon::Ui g_ui;
 ZectrixBoard g_board;
@@ -57,15 +60,16 @@ ZectrixBoard g_board;
 static_assert(sizeof(beacon::Fleet) > 4096,
               "Fleet is large by design; keep it off the stack");
 
-BEACON_BIG_BSS beacon::Fleet g_fleet;
-BEACON_BIG_BSS beacon::Fleet g_incoming;  /* staging for a network snapshot */
-BEACON_BIG_BSS beacon::Fleet g_saved;     /* preview stashes the live fleet */
+beacon::Fleet g_fleet;
+beacon::Fleet g_incoming;   /* staging for a snapshot from the network task */
+beacon::Fleet g_saved;      /* preview stashes the live fleet here          */
 beacon::Device g_device;
 
 /* Set by the `beacon-preview` console command and consumed by the main loop.
  * Drawing happens on one task only: Display owns a single panel and a single
  * previous-frame buffer, and letting the console task paint would race it. */
 volatile bool g_preview_request = false;
+volatile bool g_chirp_request = false;
 
 int64_t g_boot_us = 0;
 int64_t g_last_input_us = 0;
@@ -98,11 +102,77 @@ bool Paint(bool force_full) {
     RefreshDeviceState();
     const beacon::Paint mode = g_ui.Render(g_canvas, g_fleet, g_device);
     if (mode == beacon::Paint::kFull4bpp) {
+        if (g_gray == nullptr) {
+            g_gray = static_cast<uint8_t*>(
+                beacon::BigAlloc(beacon::kScreenW * beacon::kScreenH / 2));
+        }
+        if (g_gray == nullptr) return false;
         g_ui.RenderQuiet4bpp(g_gray, g_fleet, g_device);
         return g_display.PresentGray(g_gray) == ESP_OK;
     }
     return g_display.Present(g_canvas, force_full ||
                                        mode == beacon::Paint::kFull1bpp) == ESP_OK;
+}
+
+/* The audible half of the alert.
+ *
+ * Two short rising tones, quiet and quickly over: this fires when an agent
+ * starts waiting on you, and a desk object that startles you is one you
+ * eventually unplug. Each tone gets a raised-cosine envelope, without which
+ * the abrupt start and stop produce an audible click through the speaker that
+ * is more noticeable than the tone itself.
+ *
+ * Everything here is best-effort. If the codec is absent or fails to come up,
+ * the alert is simply visual.
+ */
+void Chirp() {
+    if (!g_config.chirp) return;
+
+    constexpr int kRate = ZECTRIX_AUDIO_SAMPLE_RATE;   /* 16 kHz mono */
+    constexpr float kTones[] = {1046.5f, 1568.0f};     /* C6, G6      */
+    constexpr int kToneMs = 110;
+    constexpr int kGapMs = 45;
+    constexpr int kEdgeMs = 9;
+    constexpr float kAmplitude = 0.22f;                /* headroom, on purpose */
+
+    static std::vector<int16_t> samples;
+    if (samples.empty()) {
+        const int tone = (kRate * kToneMs) / 1000;
+        const int gap = (kRate * kGapMs) / 1000;
+        const int edge = (kRate * kEdgeMs) / 1000;
+        samples.reserve(static_cast<size_t>(tone) * 2 + gap);
+        for (int t = 0; t < 2; ++t) {
+            for (int i = 0; i < tone; ++i) {
+                float envelope = 1.0f;
+                if (i < edge) {
+                    envelope = 0.5f * (1.0f - cosf(3.14159265f * i / edge));
+                } else if (i > tone - edge) {
+                    envelope =
+                        0.5f * (1.0f - cosf(3.14159265f * (tone - i) / edge));
+                }
+                const float value =
+                    sinf(2.0f * 3.14159265f * kTones[t] * i / kRate);
+                samples.push_back(static_cast<int16_t>(
+                    value * envelope * kAmplitude * 32767.0f));
+            }
+            if (t == 0) samples.insert(samples.end(), gap, 0);
+        }
+    }
+
+    g_board.SetAudioPower(true);
+    AudioCodec* codec = g_board.PrepareAudio();
+    if (codec == nullptr || !codec->valid()) {
+        ESP_LOGW(kTag, "no codec; alert is visual only");
+        g_board.SetAudioPower(false);
+        return;
+    }
+    codec->EnableOutput(true);
+    codec->OutputData(samples);
+    // A short tail of silence so the amplifier does not cut mid-decay.
+    static std::vector<int16_t> tail(kRate / 20, 0);
+    codec->OutputData(tail);
+    codec->EnableOutput(false);
+    g_board.SetAudioPower(false);
 }
 
 /* A short LED flutter when something starts waiting on you. The panel is
@@ -249,6 +319,13 @@ void RunPreview() {
     ESP_LOGI(kTag, "preview: done");
 }
 
+int CmdAlert(int, char**) {
+    g_chirp_request = true;
+    g_led_pulses = 3;
+    printf("firing the attention alert\n");
+    return 0;
+}
+
 int CmdPreview(int, char**) {
     g_preview_request = true;
     printf("running screen preview on the panel\n");
@@ -318,6 +395,10 @@ extern "C" void app_main(void) {
             "beacon-preview", "Draw every screen on the panel and time each "
             "refresh mode", nullptr, CmdPreview, nullptr, nullptr, nullptr};
         esp_console_cmd_register(&preview);
+        const esp_console_cmd_t alert = {
+            "beacon-alert", "Fire the attention alert (LED + chirp)", nullptr,
+            CmdAlert, nullptr, nullptr, nullptr};
+        esp_console_cmd_register(&alert);
     }
 
     if (!beacon::ConfigComplete(g_config)) {
@@ -368,8 +449,10 @@ extern "C" void app_main(void) {
                 g_ui.ClearPending();
                 PulseLed(1);
             }
+            /* No forced flash on input: moving the cursor changes one or two
+             * rows, which the diff turns into a flash-free partial refresh.
+             * Screen changes set the flag themselves through Ui::GoTo. */
             repaint = intent != beacon::Intent::kNone;
-            force_full = true;
         }
 
         // New state from the hub.
@@ -394,6 +477,7 @@ extern "C" void app_main(void) {
                 g_ui.GoTo(beacon::Screen::kFleet);
             }
             g_led_pulses = 3;
+            g_chirp_request = true;
             repaint = true;
             force_full = true;
         }
@@ -425,6 +509,10 @@ extern "C" void app_main(void) {
         if (g_led_pulses > 0) {
             PulseLed(g_led_pulses);
             g_led_pulses = 0;
+        }
+        if (g_chirp_request) {
+            g_chirp_request = false;
+            Chirp();
         }
     }
 }

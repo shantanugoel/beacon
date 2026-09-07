@@ -2,7 +2,7 @@
 GFX  := ../firmware/components/beacon_gfx
 UI   := ../firmware/components/beacon_ui
 SRCS := sim_main.cc \
-        $(GFX)/beacon_canvas.cc $(GFX)/beacon_gray.cc \
+        $(GFX)/beacon_canvas.cc $(GFX)/beacon_gray.cc $(GFX)/beacon_mem.cc \
         $(GFX)/generated/beacon_fonts.c \
         $(UI)/beacon_ui.cc $(UI)/beacon_chrome.cc \
         $(UI)/beacon_screens.cc $(UI)/beacon_quiet.cc

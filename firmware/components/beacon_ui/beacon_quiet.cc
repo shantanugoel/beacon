@@ -8,6 +8,7 @@
  * rest still shows the day moving. */
 
 #include <initializer_list>
+#include <new>
 #include <cstdio>
 #include <cstring>
 
@@ -54,9 +55,16 @@ int Cos1024(int a) { return Sin1024(a + 64); }
 }  // namespace
 
 void Ui::RenderQuiet4bpp(uint8_t* gray, const Fleet& f, const Device& d) {
-    /* 120 KB: far too big for a task stack, and too big for internal RAM
-     * on this part - see beacon_mem.h. */
-    static BEACON_BIG_BSS GrayCanvas g;
+    /* 120 KB: far too big for a task stack, and too big for internal RAM on
+     * this part. Allocated once from PSRAM - see beacon_mem.h for why this is
+     * a runtime allocation rather than a placed static. */
+    static GrayCanvas* canvas = nullptr;
+    if (canvas == nullptr) {
+        void* memory = BigAlloc(sizeof(GrayCanvas));
+        if (memory == nullptr) return;
+        canvas = new (memory) GrayCanvas();
+    }
+    GrayCanvas& g = *canvas;
     g.Clear(GrayCanvas::kPaper);
 
     /* ---- the beam --------------------------------------------------------

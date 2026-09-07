@@ -60,7 +60,11 @@ void Ui::OnFleetUpdated(const Fleet& f) {
         }
         if (!found) SelectIndex(f, 0);
     }
-    force_full_ = true;
+    /* Deliberately does NOT force a full refresh. New state arrives at least
+     * once a minute (the clock is part of the hub's revision), and forcing a
+     * flash each time would make the panel blink all day. Display::Present
+     * diffs the frame and picks the cheapest refresh that looks right, and
+     * still schedules a periodic full one to clear ghosting. */
 }
 
 bool Ui::TakeAttentionEdge() {

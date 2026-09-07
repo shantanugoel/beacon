@@ -140,9 +140,11 @@ esp_err_t Net::StartWifi() {
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi));
-    // Modem sleep: the device spends nearly all its time parked in a
-    // long-poll, so letting the radio doze between beacons is most of the
-    // battery win available here.
+    /* Modem sleep: the device spends nearly all its time parked in a long
+     * poll, so letting the radio doze between beacons is the single biggest
+     * battery win available. This was briefly suspected of causing a crash in
+     * the Wi-Fi driver's own power-management timer path; the real cause was
+     * a stack overflow in this task corrupting memory around it. */
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
     ESP_ERROR_CHECK(esp_wifi_start());
     return ESP_OK;
@@ -154,7 +156,10 @@ esp_err_t Net::Start(const Config& config) {
     if (lock_ == nullptr) return ESP_ERR_NO_MEM;
     link_ = Link::kWifiConnecting;
     ESP_ERROR_CHECK(StartWifi());
-    if (xTaskCreate(&Net::TaskEntry, "beacon_net", 8192, this, 5, nullptr)
+    /* 8 KB was not enough: esp_http_client plus cJSON plus the TCP stack's
+     * callbacks overflowed it, and the resulting memory corruption first
+     * surfaced as a crash inside the Wi-Fi driver rather than here. */
+    if (xTaskCreate(&Net::TaskEntry, "beacon_net", 12288, this, 5, nullptr)
         != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
@@ -170,7 +175,8 @@ bool Net::ParseState(const char* body, int length) {
         return false;
     }
 
-    Fleet next{};
+    Fleet& next = staging_;
+    next = Fleet{};
     next.rev = static_cast<uint32_t>(
         NumberOr(cJSON_GetObjectItemCaseSensitive(root, "rev"), 0));
     next.hour = static_cast<uint8_t>(
@@ -252,6 +258,9 @@ bool Net::ParseState(const char* body, int length) {
     have_fleet_ = true;
     fleet_changed_ = true;
     last_sync_us_ = esp_timer_get_time();
+    ESP_LOGI(kTag, "rev %u: %u agents (%u working, %u blocked)",
+             static_cast<unsigned>(next.rev), next.count, next.n_working,
+             next.n_blocked);
     return true;
 }
 
@@ -290,9 +299,8 @@ void Net::SendPending() {
 bool Net::PollOnce() {
     static char* body = nullptr;
     if (body == nullptr) {
-        // PSRAM: a 12 KB DMA-capable buffer is a waste of internal RAM.
-        body = static_cast<char*>(heap_caps_malloc(kBodyCap, MALLOC_CAP_SPIRAM));
-        if (body == nullptr) body = static_cast<char*>(malloc(kBodyCap));
+        // 12 KB of response buffer is a waste of internal RAM.
+        body = static_cast<char*>(BigAlloc(kBodyCap));
         if (body == nullptr) return false;
     }
 

@@ -56,6 +56,11 @@ fleet when the hub goes away.
 back. From the fleet screen, holding `OK` drops straight into quiet mode.
 Holding `DOWN` for three seconds powers the device down.
 
+**Attention.** When a session starts waiting on you, the device leaves quiet
+mode, flutters the LED and plays a short two-tone chirp — quiet and quickly
+over, because a desk object that startles you is one you unplug. That is the
+only interruption it is allowed to make; `beacon-set chirp off` silences it.
+
 ## Answering an agent from the device
 
 When herdr reports a session as *blocked*, the collector reads the pane and
@@ -132,11 +137,18 @@ beacon-save
 beacon-reboot
 ```
 
-`beacon-show` prints the current configuration (the password only as `(set)`),
-and `beacon-preview` draws every screen on the panel and logs how long each
-refresh mode took — useful for checking the display end to end before the
-network is up. Defaults for a first boot can also be baked in through
-`idf.py menuconfig` → **BEACON**.
+Or in one step, with the password read from a prompt rather than argv:
+
+```bash
+tools/provision.py --ssid MY-NETWORK
+tools/provision.py --show          # current config; password only as (set)
+```
+
+Other console commands: `beacon-preview` draws every screen on the panel and
+logs how long each refresh mode took (a display check that needs no network),
+and `beacon-alert` fires the attention alert so you can hear how loud it is.
+Defaults for a first boot can be baked in through `idf.py menuconfig` →
+**BEACON**.
 
 ---
 

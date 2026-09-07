@@ -40,10 +40,13 @@ private:
     bool ParseState(const char* body, int length);
 
     Config config_{};
-    /* Net is a file-scope object in app_main, so this 8.5 KB member lands in
-     * .bss rather than on a stack - but it still has to be placed in PSRAM,
-     * which is why the instance itself carries BEACON_BIG_BSS. */
+    /* Two 8.5 KB fleets, both members so they land in .bss rather than on the
+     * network task's stack. `staging_` is where a response is parsed; it is
+     * only copied into `fleet_` once the whole payload has parsed cleanly, so
+     * a truncated or malformed response can never leave a half-updated fleet
+     * on screen. */
     Fleet fleet_{};
+    Fleet staging_{};
     SemaphoreHandle_t lock_ = nullptr;
     volatile Link link_ = Link::kBooting;
     volatile int8_t rssi_ = 0;

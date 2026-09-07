@@ -1,22 +1,30 @@
 #ifndef BEACON_MEM_H_
 #define BEACON_MEM_H_
 
-/* Placement for the few objects that are too big for internal RAM.
+#include <stddef.h>
+
+namespace beacon {
+
+/* Allocator for the few objects too big for internal RAM.
  *
- * The 400x300 greyscale scratch surface is 120 KB and a Fleet is 8.5 KB; the
- * ESP32-S3 has ~330 KB of DRAM total and ESP-IDF has already spent most of it.
- * These live in the 8 MB of octal PSRAM instead. The host simulator has no
- * such distinction, so the attribute compiles away there.
+ * The 400x300 greyscale scratch surface is 120 KB; the ESP32-S3 has ~330 KB of
+ * DRAM and ESP-IDF has already spent most of it. These go to the 8 MB of octal
+ * PSRAM instead.
  *
- * Note what is deliberately *not* marked: the 1bpp canvas stays in internal
- * RAM because it is handed straight to SPI DMA and is written a pixel at a
- * time by every draw call.
+ * Why a runtime allocation rather than EXT_RAM_BSS_ATTR: placing .bss in PSRAM
+ * (CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY) coincided with a hard crash
+ * inside the Wi-Fi driver's power-management timer path as soon as the radio
+ * associated. heap_caps_malloc(MALLOC_CAP_SPIRAM) is the pattern ESP-IDF
+ * actually supports alongside Wi-Fi, and it leaves the BSS segment alone.
+ * See docs/RESEARCH_LOG.md §9.
+ *
+ * Never returns memory for something touched from an ISR, and never used for
+ * the 1bpp canvas, which is a SPI DMA source and the hot path for drawing.
+ *
+ * Falls back to plain malloc, so the host simulator builds unchanged.
  */
-#ifdef ESP_PLATFORM
-#include "esp_attr.h"
-#define BEACON_BIG_BSS EXT_RAM_BSS_ATTR
-#else
-#define BEACON_BIG_BSS
-#endif
+void* BigAlloc(size_t bytes);
+
+}  // namespace beacon
 
 #endif  /* BEACON_MEM_H_ */

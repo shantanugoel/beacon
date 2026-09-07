@@ -298,3 +298,106 @@ for a venv under `~/.espressif/python_env`); the entry point is
 sourced from a script and exposes `idf.py` only as a shell function. The
 supported non-interactive path is `activate_idf_v6.1.sh -e`, which prints the
 environment — see `tools/idf.sh`.
+
+---
+
+## 10. Bringing the radio up (and a misleading crash)
+
+Once real credentials went in, the device rebooted in a loop. The panic was
+`StoreProhibited` inside the **Wi-Fi driver's own power-management timer path**:
+
+```
+timer_remove -> esp_timer_stop -> ets_timer_disarm
+  -> esp_coex_common_timer_disarm_wrapper
+  -> pm_enable_active_timer -> pm_rx_data_process -> ppRxPkt -> ppTask
+```
+
+Nothing in that stack is BEACON code, which made it look like a driver or a
+configuration problem. Two plausible suspects were changed at once to get the
+device usable — modem sleep (`WIFI_PS_MIN_MODEM`, and the crash was squarely
+in the power-management path) and PSRAM-resident `.bss`
+(`CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY`, which had just been added).
+
+That got past the loop and straight into the actual bug, which the next boot
+named outright:
+
+```
+***ERROR*** A stack overflow in task beacon_net has been detected.
+```
+
+`Net::ParseState` was building its result in a local `Fleet next{}` — the same
+8.5 KB-on-the-stack mistake already fixed once in `app_main`, missed here
+because it looked like an ordinary local. It overflowed the 8 KB network task
+stack and corrupted whatever sat next to it, which happened to be Wi-Fi driver
+state; hence a crash in `ppTask` with no BEACON frame anywhere in the
+backtrace.
+
+The fix is a `staging_` member that a response is parsed into and only copied
+into the live fleet once the whole payload parses — so a truncated response
+can never leave a half-updated screen either. The task stack went to 12 KB for
+margin.
+
+**Then both suspects were re-tested rather than left convicted.** Modem sleep
+was re-enabled and ran clean, so it was innocent and the battery win is kept.
+The PSRAM `.bss` change was *not* reverted wholesale — the big buffers stay in
+PSRAM, but now through `heap_caps_malloc(MALLOC_CAP_SPIRAM)` at runtime
+(`beacon_mem.h`) rather than by placing the BSS segment there. That is the
+pattern ESP-IDF supports alongside Wi-Fi, and it leaves the segment layout
+alone.
+
+The lesson worth keeping: **a backtrace with none of your own frames in it is
+often still your bug.** A stack overflow lands the blame wherever the
+neighbouring memory happens to live.
+
+---
+
+## 11. Verified on hardware
+
+| | |
+| --- | --- |
+| Boot, panel, all five screens | `beacon-preview` draws each and logs its refresh time |
+| Provisioning over USB console | `beacon-set` / `beacon-save`, credentials survive reflash |
+| Wi-Fi association | `192.168.1.20`, same /24 as the hub, ~2.6 s from boot |
+| Hub long-poll | revisions arriving; `304` on no change |
+| Refresh behaviour in steady state | one full refresh on first paint, then flash-free partials of 750–765 ms |
+| Attention path | a blocked agent injected at the hub sorted to the top and triggered a redraw of the band within a second |
+| Action path | option fired from the device reached the owning machine's command queue; `focus` executed against herdr for real |
+| Stale-option guard | an option the agent is no longer offering is refused rather than sent |
+| Alert | ES8311 comes up and the chirp plays; `beacon-alert` fires it on demand |
+
+The refresh log from a steady-state minute is the clearest evidence the design
+works as intended:
+
+```
+beacon.net: rev 70: 2 agents (1 working, 1 blocked)
+beacon.disp: full 384x153 (48%) in 1124 ms      <- attention band appears
+beacon.disp: partial 384x131 (41%) in 818 ms    <- band clears
+beacon.disp: partial 96x8 (0%) in 752 ms        <- a timer ticks over
+```
+
+The 48% change crossed the full-refresh threshold and correctly took the
+flash; the 41% one stayed under it and did not.
+
+---
+
+## 12. Left undone
+
+- **The ambient screen blocks input for its 8.2 s refresh.** Entering quiet
+  mode makes the device deaf to buttons for the duration. It needs several
+  idle minutes to trigger, so it is rare, but a button press in that window is
+  simply lost. Fixing it properly means moving the panel onto its own task
+  with a cancellable refresh.
+- **Elapsed times are seeded, not known.** On a cold start the collector has
+  no record of how long a session has held its state; it uses the transcript's
+  last-write time as a lower bound. A collector that persisted state across
+  restarts would be exact.
+- **The transcript-only fallback can never report "blocked"**, because a
+  permission prompt is not written to the transcript. On a machine without
+  herdr, BEACON is an ambient display rather than a pager. Claude Code's
+  `Notification` hook would close that gap.
+- **No TLS.** The hub speaks plain HTTP with an optional bearer token. That is
+  a deliberate fit for a LAN device, and the wrong choice the moment the hub
+  is exposed beyond one.
+- **NFC is unused.** The board has an ST25-class tag at 0x55; writing the hub
+  URL and credentials to it would make provisioning a phone tap instead of a
+  serial console.

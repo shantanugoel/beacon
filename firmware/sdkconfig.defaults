@@ -32,9 +32,8 @@ CONFIG_ESP_CONSOLE_UART_DEFAULT=n
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 
-# Lets EXT_RAM_BSS_ATTR place the greyscale scratch surface and the Fleet
-# snapshots in PSRAM; without it they land in DRAM and overflow it.
-CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+# Note: BSS is deliberately NOT placed in PSRAM. The big buffers are
+# heap_caps_malloc'd from PSRAM at runtime instead - see beacon_mem.h.
 
 # First-boot default for this desk: the hub runs on the hub machine. NVS overrides
 # it, so `beacon-set hub <url>` is enough to point the device somewhere else
