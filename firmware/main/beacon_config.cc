@@ -62,6 +62,9 @@ esp_err_t ConfigLoad(Config* out) {
     if (nvs_get_u8(handle, "chirp", &flag) == ESP_OK) {
         out->chirp = flag != 0;
     }
+    if (nvs_get_u8(handle, "wifi_ps", &flag) == ESP_OK) {
+        out->wifi_max_power_save = flag != 0;
+    }
     nvs_close(handle);
     return ESP_OK;
 }
@@ -76,6 +79,7 @@ esp_err_t ConfigSave(const Config& config) {
     nvs_set_str(handle, "token", config.token);
     nvs_set_i32(handle, "quiet", config.quiet_after_s);
     nvs_set_u8(handle, "chirp", config.chirp ? 1 : 0);
+    nvs_set_u8(handle, "wifi_ps", config.wifi_max_power_save ? 1 : 0);
     err = nvs_commit(handle);
     nvs_close(handle);
     return err;
@@ -101,6 +105,7 @@ int CmdShow(int, char**) {
     printf("token  %s\n", c.token[0] ? "(set)" : "(empty)");
     printf("quiet  %d s\n", c.quiet_after_s);
     printf("chirp  %s\n", c.chirp ? "on" : "off");
+    printf("wifi-ps %s\n", c.wifi_max_power_save ? "maximum" : "responsive");
     return 0;
 }
 
@@ -125,8 +130,12 @@ int CmdSet(int argc, char** argv) {
         c.quiet_after_s = atoi(value);
     } else if (strcmp(key, "chirp") == 0) {
         c.chirp = (strcmp(value, "on") == 0 || strcmp(value, "1") == 0);
+    } else if (strcmp(key, "wifi-ps") == 0) {
+        c.wifi_max_power_save =
+            strcmp(value, "maximum") == 0 || strcmp(value, "max") == 0 ||
+            strcmp(value, "on") == 0 || strcmp(value, "1") == 0;
     } else {
-        printf("unknown key '%s' (ssid pass hub token quiet chirp)\n", key);
+        printf("unknown key '%s' (ssid pass hub token quiet chirp wifi-ps)\n", key);
         return 1;
     }
     printf("set %s; run 'beacon-save' then 'beacon-reboot'\n", key);
@@ -165,7 +174,8 @@ void ConfigRegisterConsole(Config* config) {
         return;
     }
 
-    g_set_args.key = arg_str1(nullptr, nullptr, "<key>", "ssid|pass|hub|token|quiet|chirp");
+    g_set_args.key = arg_str1(nullptr, nullptr, "<key>",
+                              "ssid|pass|hub|token|quiet|chirp|wifi-ps");
     g_set_args.value = arg_str0(nullptr, nullptr, "<value>", "new value");
     g_set_args.end = arg_end(2);
 

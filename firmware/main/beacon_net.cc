@@ -137,6 +137,10 @@ esp_err_t Net::StartWifi() {
               sizeof(wifi.sta.password), config_.password);
     wifi.sta.threshold.authmode =
         config_.password[0] ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+    // MAX_MODEM wakes on this listen interval rather than every AP DTIM.
+    // Three beacons is a useful desk-device compromise: meaningful radio
+    // sleep without making inbound status feel sluggish.
+    wifi.sta.listen_interval = 3;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi));
@@ -145,9 +149,16 @@ esp_err_t Net::StartWifi() {
      * battery win available. This was briefly suspected of causing a crash in
      * the Wi-Fi driver's own power-management timer path; the real cause was
      * a stack overflow in this task corrupting memory around it. */
-    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
+    ESP_ERROR_CHECK(esp_wifi_set_ps(config_.wifi_max_power_save
+                                        ? WIFI_PS_MAX_MODEM
+                                        : WIFI_PS_MIN_MODEM));
     ESP_ERROR_CHECK(esp_wifi_start());
     return ESP_OK;
+}
+
+esp_err_t Net::SetMaxPowerSave(bool enabled) {
+    config_.wifi_max_power_save = enabled;
+    return esp_wifi_set_ps(enabled ? WIFI_PS_MAX_MODEM : WIFI_PS_MIN_MODEM);
 }
 
 esp_err_t Net::Start(const Config& config) {

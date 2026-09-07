@@ -15,6 +15,7 @@ struct Config {
     char token[65] = {};
     int quiet_after_s = 180; /* inactivity before the ambient screen */
     bool chirp = true;       /* audible alert when something needs you */
+    bool wifi_max_power_save = true; /* wake on DTIM instead of each beacon */
 };
 
 esp_err_t ConfigLoad(Config* out);

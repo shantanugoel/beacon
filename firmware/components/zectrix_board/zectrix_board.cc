@@ -20,6 +20,7 @@ namespace {
 constexpr char kTag[] = "zectrix_board";
 constexpr TickType_t kButtonPoll = pdMS_TO_TICKS(20);
 constexpr TickType_t kButtonDebounce = pdMS_TO_TICKS(40);
+constexpr TickType_t kUpLongPress = pdMS_TO_TICKS(1500);
 constexpr TickType_t kOkLongPress = pdMS_TO_TICKS(1500);
 constexpr TickType_t kDownLongPress = pdMS_TO_TICKS(3000);
 constexpr adc_channel_t kBatteryAdcChannel = ADC_CHANNEL_3;
@@ -36,6 +37,9 @@ constexpr std::array<ButtonDefinition, 3> kButtons = {{
 }};
 
 TickType_t LongPressTicks(ZectrixButton button) {
+    if (button == ZectrixButton::kUp) {
+        return kUpLongPress;
+    }
     if (button == ZectrixButton::kDown) {
         return kDownLongPress;
     }
@@ -46,8 +50,10 @@ TickType_t LongPressTicks(ZectrixButton button) {
 }
 
 bool ClickOnPress(ZectrixButton button) {
-    return button == ZectrixButton::kUp ||
-           button == ZectrixButton::kDown;
+    // DOWN must report immediately because it is also the power key. UP is
+    // resolved on release so a hold can be distinguished from a click without
+    // moving the fleet cursor before opening the System screen.
+    return button == ZectrixButton::kDown;
 }
 
 }  // namespace
@@ -205,6 +211,9 @@ esp_err_t ZectrixBoard::Init() {
 
     ESP_LOGI(kTag, "board initialized rtc=%d nfc=%d",
              rtc_ != nullptr, nfc_ != nullptr);
+    // GPIO42 also keeps the codec-side I2C rail alive. Every I2C transaction
+    // explicitly wakes it, so there is no reason to burn power between them.
+    SetAudioPower(false);
     return ESP_OK;
 }
 
@@ -353,6 +362,11 @@ void ZectrixBoard::SetAudioPower(bool on) {
     gpio_hold_dis(ZECTRIX_AUDIO_POWER);
     gpio_set_level(ZECTRIX_AUDIO_POWER, on ? 1 : 0);
     gpio_hold_en(ZECTRIX_AUDIO_POWER);
+    if (!on) {
+        // The ES8311 loses its register state with this rail. Re-run Start()
+        // on the next chirp instead of assuming the old session survived.
+        audio_started_ = false;
+    }
 }
 
 void ZectrixBoard::CutBatteryPower() {

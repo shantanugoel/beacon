@@ -19,6 +19,7 @@
 #include "beacon_mem.h"
 #include "beacon_net.h"
 #include "beacon_ui.h"
+#include "beacon_web.h"
 #include "esp_chip_info.h"
 #include "esp_console.h"
 #include "esp_heap_caps.h"
@@ -34,7 +35,7 @@
 namespace {
 
 constexpr const char* kTag = "beacon";
-constexpr const char* kFirmwareVersion = "v0.1.0";
+constexpr const char* kFirmwareVersion = "v0.2.0";
 
 /* How long DOWN must be held to power the device down. Matches the hardware
  * convention the vendor firmware established, so muscle memory carries over. */
@@ -51,6 +52,7 @@ beacon::Config g_config;
 beacon::Net g_net;
 beacon::Display g_display;
 beacon::Ui g_ui;
+beacon::Web g_web;
 ZectrixBoard g_board;
 
 /* Fleet is ~8.5 KB (16 agents x 528 B). Every one of these must live in
@@ -70,6 +72,7 @@ beacon::Device g_device;
  * previous-frame buffer, and letting the console task paint would race it. */
 volatile bool g_preview_request = false;
 volatile bool g_chirp_request = false;
+volatile bool g_test_chirp_request = false;
 
 int64_t g_boot_us = 0;
 int64_t g_last_input_us = 0;
@@ -125,8 +128,8 @@ bool Paint(bool force_full) {
  * Everything here is best-effort. If the codec is absent or fails to come up,
  * the alert is simply visual.
  */
-void Chirp() {
-    if (!g_config.chirp) return;
+void Chirp(bool ignore_setting = false) {
+    if (!ignore_setting && !g_config.chirp) return;
 
     constexpr int kRate = ZECTRIX_AUDIO_SAMPLE_RATE;   /* 16 kHz mono */
     constexpr float kTones[] = {1046.5f, 1568.0f};     /* C6, G6      */
@@ -173,6 +176,14 @@ void Chirp() {
     codec->OutputData(tail);
     codec->EnableOutput(false);
     g_board.SetAudioPower(false);
+}
+
+void WebStatusSnapshot(beacon::WebStatus* out) {
+    if (out == nullptr) return;
+    out->device = g_device;
+    out->device.uptime_s = static_cast<uint32_t>(
+        (esp_timer_get_time() - g_boot_us) / 1000000);
+    out->config = g_config;
 }
 
 /* A short LED flutter when something starts waiting on you. The panel is
@@ -436,6 +447,8 @@ extern "C" void app_main(void) {
         ESP_LOGE(kTag, "network start failed");
         g_device.link = beacon::Link::kOffline;
         Paint(true);
+    } else if (g_web.Start(WebStatusSnapshot) != ESP_OK) {
+        ESP_LOGW(kTag, "web configurator failed to start");
     }
 
     bool showed_fleet = false;
@@ -447,6 +460,40 @@ extern "C" void app_main(void) {
         const int64_t now = esp_timer_get_time();
         bool force_full = false;
         bool repaint = false;
+
+        beacon::WebCommand web_command;
+        while (g_web.TakeCommand(&web_command)) {
+            switch (web_command.type) {
+                case beacon::WebCommandType::kSaveConfig:
+                    g_config.chirp = web_command.chirp;
+                    g_config.quiet_after_s = web_command.quiet_after_s;
+                    g_config.wifi_max_power_save =
+                        web_command.wifi_max_power_save;
+                    if (beacon::ConfigSave(g_config) != ESP_OK) {
+                        ESP_LOGW(kTag, "web config save failed");
+                    }
+                    if (g_net.SetMaxPowerSave(
+                            g_config.wifi_max_power_save) != ESP_OK) {
+                        ESP_LOGW(kTag, "Wi-Fi power-save update failed");
+                    }
+                    break;
+                case beacon::WebCommandType::kTestChirp:
+                    g_test_chirp_request = true;
+                    break;
+                case beacon::WebCommandType::kTestLed:
+                    g_led_pulses = 3;
+                    break;
+                case beacon::WebCommandType::kRefreshDisplay:
+                    repaint = true;
+                    force_full = true;
+                    break;
+                case beacon::WebCommandType::kShowSystem:
+                    g_ui.GoTo(beacon::Screen::kSystem);
+                    repaint = true;
+                    force_full = true;
+                    break;
+            }
+        }
 
         if (had_input) {
             g_last_input_us = now;
@@ -546,6 +593,10 @@ extern "C" void app_main(void) {
         if (g_chirp_request) {
             g_chirp_request = false;
             Chirp();
+        }
+        if (g_test_chirp_request) {
+            g_test_chirp_request = false;
+            Chirp(true);
         }
     }
 }

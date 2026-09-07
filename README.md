@@ -73,6 +73,21 @@ mode, flutters the LED and plays a short two-tone chirp — quiet and quickly
 over, because a desk object that startles you is one you unplug. That is the
 only interruption it is allowed to make; `beacon-set chirp off` silences it.
 
+## Device configurator
+
+Once BEACON is online, open `http://<DEVICE_IP>/` from the same local network.
+The configurator shows live connection, battery, signal and sync health. It
+can enable or silence the attention chirp, choose the quiet-screen timeout,
+select the Wi-Fi power profile, and test the speaker, LED and display. **Show
+system** opens the same device status screen as holding `UP` for 1.5 seconds.
+Settings are saved to NVS and survive reflashing.
+
+![BEACON web configurator](docs/configurator.png)
+
+The interface is deliberately local and unauthenticated: it never exposes the
+stored Wi-Fi password or hub token, but anyone on the trusted LAN who knows the
+device IP can operate its diagnostics.
+
 ## Answering an agent from the device
 
 When herdr reports a session as *blocked*, the collector reads the pane and

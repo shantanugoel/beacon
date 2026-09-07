@@ -38,7 +38,9 @@ esp_err_t Display::Init() {
     if (patch_ == nullptr) patch_ = static_cast<uint8_t*>(malloc(kFrameBytes));
     if (previous_ == nullptr || patch_ == nullptr) return ESP_ERR_NO_MEM;
     memset(previous_, 0xFF, kFrameBytes);
-    return ESP_OK;
+    // E-ink retains its image without power. Each refresh wakes and
+    // reinitializes the controller, so leave the external rail off at idle.
+    return zectrix_epd_power_off(epd_);
 }
 
 void Display::Shutdown() {
@@ -87,7 +89,8 @@ esp_err_t Display::Present(Canvas& canvas, bool force_full) {
                            since_full_ >= kPartialsPerFull ||
                            percent >= kFullThresholdPercent;
 
-    esp_err_t err;
+    esp_err_t err = zectrix_epd_power_on(epd_);
+    if (err != ESP_OK) return err;
     if (need_full) {
         err = zectrix_epd_refresh_full_1bpp(epd_, canvas.data(), kFrameBytes);
         if (err == ESP_OK) {
@@ -109,6 +112,9 @@ esp_err_t Display::Present(Canvas& canvas, bool force_full) {
             ++partial_count_;
         }
     }
+
+    const esp_err_t power_err = zectrix_epd_power_off(epd_);
+    if (err == ESP_OK) err = power_err;
 
     if (err == ESP_OK) {
         memcpy(previous_, canvas.data(), kFrameBytes);
@@ -148,8 +154,13 @@ esp_err_t Display::PresentGray(const uint8_t* packed) {
     /* The vendor 4bpp path already paints a white base internally
      * (DisplayOtpWhiteBase). A second full 1bpp white here doubled the flash
      * the user sees and added ~1 s for no extra cleanliness. */
-    esp_err_t err = zectrix_epd_refresh_full_4bpp(
-        epd_, packed, ZECTRIX_EPD_4BPP_FRAME_BYTES);
+    esp_err_t err = zectrix_epd_power_on(epd_);
+    if (err == ESP_OK) {
+        err = zectrix_epd_refresh_full_4bpp(
+            epd_, packed, ZECTRIX_EPD_4BPP_FRAME_BYTES);
+    }
+    const esp_err_t power_err = zectrix_epd_power_off(epd_);
+    if (err == ESP_OK) err = power_err;
     if (err == ESP_OK) {
         memcpy(previous_gray_, packed, ZECTRIX_EPD_4BPP_FRAME_BYTES);
         have_gray_ = true;
@@ -176,8 +187,12 @@ esp_err_t Display::Clear() {
         if (white == nullptr) return ESP_ERR_NO_MEM;
     }
     memset(white, 0xFF, kFrameBytes);
-    const esp_err_t err =
-        zectrix_epd_refresh_full_1bpp(epd_, white, kFrameBytes);
+    esp_err_t err = zectrix_epd_power_on(epd_);
+    if (err == ESP_OK) {
+        err = zectrix_epd_refresh_full_1bpp(epd_, white, kFrameBytes);
+    }
+    const esp_err_t power_err = zectrix_epd_power_off(epd_);
+    if (err == ESP_OK) err = power_err;
     if (err == ESP_OK && previous_ != nullptr) {
         memset(previous_, 0xFF, kFrameBytes);
         have_base_ = true;

@@ -14,6 +14,7 @@ namespace beacon {
 class Net {
 public:
     esp_err_t Start(const Config& config);
+    esp_err_t SetMaxPowerSave(bool enabled);
 
     /* Copies the current fleet out. Returns false if nothing has arrived yet. */
     bool CopyFleet(Fleet* out);
